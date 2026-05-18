@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "colliderml-electron"
+version = "0.0.1"
+description = "Exploring ColliderML calorimeter data for prompt electrons"
+readme = "README.md"
+requires-python = ">=3.10,<3.12"
+dependencies = [
+    "colliderml>=0.2.0",
+    "datasets>=2.20.0",
+    "polars>=1.0.0",
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "matplotlib>=3.8",
+    "scikit-learn>=1.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
