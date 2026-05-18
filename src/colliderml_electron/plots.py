@@ -49,3 +49,42 @@ def detector_geometry(
     ax.grid(True, alpha=0.2)
     fig.tight_layout()
     return fig
+
+
+def cell_energy_spectrum(
+    frames,
+    n_events: int | None = None,
+    bins: int = 80,
+):
+    """Histogram of all cell energies (log10) across n_events.
+
+    Useful for spotting the threshold cut-off and the dynamic range.
+    Returns the matplotlib Figure.
+    """
+    n_events = n_events or frames["calo_hits"].shape[0]
+    e_all = []
+    for i in range(n_events):
+        c = frames["calo_hits"].row(i, named=True)
+        e_all.append(np.asarray(c["total_energy"]))
+    e = np.concatenate(e_all)
+    e = e[e > 0]
+    log_e = np.log10(e)
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.hist(log_e, bins=bins, color="steelblue",
+            edgecolor="white", linewidth=0.3)
+    ax.set_xlabel(r"$\log_{10}$(cell energy)  [uncalibrated]")
+    ax.set_ylabel("cells")
+    ax.set_yscale("log")
+    ax.set_title(f"Cell-energy spectrum — {n_events} events, {len(e):,} cells")
+
+    pct = np.percentile(log_e, [1, 50, 99])
+    ymax = ax.get_ylim()[1]
+    for p, lbl in zip(pct, ["1%", "50%", "99%"]):
+        ax.axvline(p, color="crimson", linestyle="--", linewidth=0.8, alpha=0.7)
+        ax.text(p, ymax * 0.5, f"  {lbl}", rotation=90,
+                va="top", fontsize=8, color="crimson")
+
+    ax.grid(True, alpha=0.2)
+    fig.tight_layout()
+    return fig
