@@ -296,3 +296,82 @@ def shower_eta_phi_lego(
                  r"$\eta_0$=" + f"{float(eta_e):.2f}, n_cells={len(cells['x'])}")
     fig.tight_layout()
     return fig
+
+
+def shower_longitudinal_profile(
+    particles_row: dict,
+    calo_row: dict,
+    electron_pid: int,
+    full_shower: bool = True,
+    n_bins: int = 40,
+):
+    """Energy-weighted histogram of depth `s` along the electron axis,
+    stacked by detector subsystem, with cumulative-fraction panel.
+    Returns the matplotlib Figure.
+    """
+    from .io import cells_for_electron, cells_for_electron_full
+    from .coords import axis_from_momentum, along_perp
+    from .calibration import calibrate
+
+    cells = (cells_for_electron_full(particles_row, calo_row, electron_pid)
+             if full_shower else cells_for_electron(calo_row, electron_pid))
+
+    pids = np.asarray(particles_row["particle_id"])
+    idx = int(np.where(pids == electron_pid)[0][0])
+    px = float(particles_row["px"][idx])
+    py = float(particles_row["py"][idx])
+    pz = float(particles_row["pz"][idx])
+    E = float(particles_row["energy"][idx])
+
+    fig, (ax_h, ax_c) = plt.subplots(
+        2, 1, figsize=(10, 7), sharex=True,
+        gridspec_kw={"height_ratios": [3, 1]},
+    )
+    if len(cells["x"]) == 0:
+        ax_h.set_title(f"No cells for electron pid={electron_pid}")
+        return fig
+
+    axis = axis_from_momentum(px, py, pz)
+    s, _ = along_perp(cells["x"], cells["y"], cells["z"], axis)
+    e_cal = calibrate(cells["e_from_e"], cells["x"], cells["y"], cells["z"])
+
+    s_min, s_max = float(s.min()), float(s.max())
+    pad = 0.05 * (s_max - s_min + 1.0)
+    edges = np.linspace(s_min - pad, s_max + pad, n_bins + 1)
+    centers = 0.5 * (edges[:-1] + edges[1:])
+    widths = np.diff(edges)
+
+    det = cells["detector"]
+    codes = np.unique(det)
+    cmap = plt.colormaps.get_cmap("tab10")
+    bottoms = np.zeros(n_bins)
+    for k, code in enumerate(codes):
+        m = det == code
+        h, _ = np.histogram(s[m], bins=edges, weights=e_cal[m])
+        ax_h.bar(centers, h, width=widths, bottom=bottoms,
+                 color=cmap(k % 10), alpha=0.85,
+                 edgecolor="white", linewidth=0.2,
+                 label=f"detector={code}")
+        bottoms = bottoms + h
+
+    ax_h.set_ylabel("calibrated energy per bin [GeV]")
+    ax_h.set_title(f"Longitudinal shower profile — pid={electron_pid}, "
+                   f"E={E:.1f} GeV, Σ deposited = {e_cal.sum():.1f} GeV")
+    ax_h.legend(loc="upper right", fontsize=9)
+    ax_h.grid(True, alpha=0.2)
+
+    total = e_cal.sum()
+    if total > 0:
+        order = np.argsort(s)
+        cum = np.cumsum(e_cal[order]) / total
+        ax_c.plot(s[order], cum, color="black", linewidth=1.2)
+        ax_c.axhline(0.95, color="crimson", linestyle="--", linewidth=0.7,
+                     alpha=0.6, label="95% containment")
+        ax_c.legend(loc="lower right", fontsize=8)
+    ax_c.set_xlabel("longitudinal depth s [mm] (along electron axis from IP)")
+    ax_c.set_ylabel("cumulative\nfraction")
+    ax_c.set_ylim(0, 1.05)
+    ax_c.grid(True, alpha=0.2)
+
+    fig.tight_layout()
+    return fig
