@@ -98,14 +98,14 @@ def cells_per_electron(
     and a scatter of cells vs the electron's truth energy.
     Returns the matplotlib Figure.
     """
-    from .io import get_event, prompt_electrons, cells_for_electron
+    from .io import get_event, prompt_electrons, cells_for_electron, cells_for_electron_full
     n_events = n_events or frames["calo_hits"].shape[0]
 
     n_cells, energies = [], []
     for i in range(n_events):
         p_row, c_row = get_event(frames, i)
         for e in prompt_electrons(p_row):
-            cells = cells_for_electron(c_row, e["particle_id"])
+            cells = cells_for_electron_full(p_row, c_row, e["particle_id"])
             n_cells.append(len(cells["x"]))
             energies.append(e["energy"])
     n_cells = np.asarray(n_cells)
@@ -126,5 +126,52 @@ def cells_per_electron(
     ax_s.set_title("Cells vs. electron energy")
     ax_s.grid(True, alpha=0.2)
 
+    fig.tight_layout()
+    return fig
+
+
+def deposited_vs_truth(
+    frames,
+    n_events: int | None = None,
+):
+    """Per-electron scatter: calibrated sum(e_from_e) vs truth energy.
+    Includes y=x reference and a linear fit through the origin. Returns Figure.
+    """
+    from .io import get_event, prompt_electrons, cells_for_electron, cells_for_electron_full
+    from .calibration import calibrate
+
+    n_events = n_events or frames["calo_hits"].shape[0]
+    truth, deposited = [], []
+    for i in range(n_events):
+        p_row, c_row = get_event(frames, i)
+        for e in prompt_electrons(p_row):
+            cells = cells_for_electron_full(p_row, c_row, e["particle_id"])
+            if len(cells["x"]) == 0:
+                continue
+            e_cal = calibrate(cells["e_from_e"], cells["x"], cells["y"], cells["z"])
+            truth.append(e["energy"])
+            deposited.append(float(e_cal.sum()))
+    truth = np.asarray(truth)
+    deposited = np.asarray(deposited)
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+    ax.scatter(truth, deposited, alpha=0.6, s=22, color="darkorange",
+               label=f"{len(truth)} electrons")
+
+    lim = max(truth.max(), deposited.max()) * 1.05 if len(truth) else 1.0
+    ax.plot([0, lim], [0, lim], "--", color="gray", linewidth=1, label="y = x")
+
+    if len(truth) > 1:
+        slope = float((truth * deposited).sum() / (truth ** 2).sum())
+        ax.plot([0, lim], [0, slope * lim], "-", color="crimson", linewidth=1.2,
+                label=f"fit through origin: slope = {slope:.3f}")
+
+    ax.set_xlim(0, lim); ax.set_ylim(0, lim)
+    ax.set_aspect("equal")
+    ax.set_xlabel("electron truth energy [GeV]")
+    ax.set_ylabel(r"$\sum$ calibrated $e_{from\_e}$  [GeV]")
+    ax.set_title("Deposited (electron-only) vs truth energy")
+    ax.legend(loc="upper left", fontsize=9)
+    ax.grid(True, alpha=0.2)
     fig.tight_layout()
     return fig

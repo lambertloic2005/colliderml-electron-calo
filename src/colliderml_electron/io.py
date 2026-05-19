@@ -1,5 +1,6 @@
 """Loaders for ColliderML calorimeter data, focused on prompt electrons."""
 from __future__ import annotations
+from itertools import chain
 import numpy as np
 import polars as pl
 from colliderml.core import load_tables, collect_tables
@@ -10,11 +11,7 @@ def load_frames(
     pileup: str = "pu200",
     max_events: int = 50,
 ) -> dict[str, pl.DataFrame]:
-    """Load `particles` and `calo_hits` for a channel via the colliderml library.
-
-    Returns dict with keys 'particles' and 'calo_hits'. Each is a Polars
-    DataFrame with one row per event and list columns for per-object fields.
-    """
+    """Load `particles` and `calo_hits` for a channel via the colliderml library."""
     cfg = {
         "dataset_id": "CERN/ColliderML-Release-1",
         "channels": channel,
@@ -63,70 +60,105 @@ def prompt_electrons(particles_row: dict) -> list[dict]:
     ]
 
 
-def cells_for_electron(calo_row: dict, electron_pid: int) -> dict[str, np.ndarray]:
-    """Per-cell arrays for cells the given electron contributed to.
+def descendant_pids(particles_row: dict, root_pid: int) -> set[int]:
+    """{root_pid} union all particles descended from it via parent_id."""
+    pids = np.asarray(particles_row["particle_id"], dtype=np.int64)
+    parents = np.asarray(particles_row["parent_id"], dtype=np.int64)
+    children: dict[int, list[int]] = {}
+    for pid, parent in zip(pids.tolist(), parents.tolist()):
+        children.setdefault(int(parent), []).append(int(pid))
+    family: set[int] = set()
+    stack = [int(root_pid)]
+    while stack:
+        cur = stack.pop()
+        if cur in family:
+            continue
+        family.add(cur)
+        stack.extend(children.get(cur, []))
+    return family
 
-    Keys: x, y, z (mm), detector (int), e_total (cell total energy),
-    e_from_e (this electron's share of the cell), t_from_e (energy-weighted
-    time of its contributions).
+
+def cells_for_particle_set(calo_row: dict, pid_set: set[int]) -> dict[str, np.ndarray]:
+    """Vectorised per-cell selection: cells contributed to by any pid in pid_set.
+
+    Returns keys: x, y, z (mm), detector, e_total, e_from_e (sum of pid_set
+    contributions in the cell), t_from_e (energy-weighted contribution time).
     """
     x = np.asarray(calo_row["x"], dtype=np.float32)
     y = np.asarray(calo_row["y"], dtype=np.float32)
     z = np.asarray(calo_row["z"], dtype=np.float32)
     det = np.asarray(calo_row["detector"], dtype=np.int32)
     e_tot = np.asarray(calo_row["total_energy"], dtype=np.float32)
+    n_cells = len(x)
 
-    keep: list[int] = []
-    e_from_e: list[float] = []
-    t_from_e: list[float] = []
-    for i, (pids, es, ts) in enumerate(zip(
-        calo_row["contrib_particle_ids"],
-        calo_row["contrib_energies"],
-        calo_row["contrib_times"],
-    )):
-        pids = np.asarray(pids)
-        hit = np.where(pids == electron_pid)[0]
-        if hit.size:
-            es_arr = np.asarray(es)[hit]
-            ts_arr = np.asarray(ts)[hit]
-            esum = float(es_arr.sum())
-            keep.append(i)
-            e_from_e.append(esum)
-            t_from_e.append(
-                float((ts_arr * es_arr).sum() / esum) if esum > 0 else float("nan")
-            )
+    empty_f = np.empty(0, dtype=np.float32)
+    empty_i = np.empty(0, dtype=np.int32)
+    empty_out = {"x": empty_f, "y": empty_f, "z": empty_f, "detector": empty_i,
+                 "e_total": empty_f, "e_from_e": empty_f, "t_from_e": empty_f}
+    if n_cells == 0 or not pid_set:
+        return empty_out
 
-    k = np.asarray(keep, dtype=np.int64)
+    pid_arr = np.fromiter(pid_set, dtype=np.int64, count=len(pid_set))
+    pids_lol = calo_row["contrib_particle_ids"]
+    es_lol = calo_row["contrib_energies"]
+    ts_lol = calo_row["contrib_times"]
+
+    # Flatten variable-length nested lists into one long array per field.
+    n_per_cell = np.fromiter((len(p) for p in pids_lol),
+                             dtype=np.int64, count=n_cells)
+    total = int(n_per_cell.sum())
+    if total == 0:
+        return empty_out
+
+    cell_idx = np.repeat(np.arange(n_cells, dtype=np.int64), n_per_cell)
+    all_pids = np.fromiter(chain.from_iterable(pids_lol), dtype=np.int64, count=total)
+    all_es = np.fromiter(chain.from_iterable(es_lol), dtype=np.float32, count=total)
+    all_ts = np.fromiter(chain.from_iterable(ts_lol), dtype=np.float32, count=total)
+
+    hit = np.isin(all_pids, pid_arr)
+    if not hit.any():
+        return empty_out
+    hit_cells = cell_idx[hit]
+    hit_es = all_es[hit]
+    hit_ts = all_ts[hit]
+
+    e_per_cell = np.bincount(hit_cells, weights=hit_es, minlength=n_cells)
+    te_per_cell = np.bincount(hit_cells, weights=hit_es * hit_ts, minlength=n_cells)
+    keep = np.where(e_per_cell > 0)[0]
+
     return {
-        "x": x[k],
-        "y": y[k],
-        "z": z[k],
-        "detector": det[k],
-        "e_total": e_tot[k],
-        "e_from_e": np.asarray(e_from_e, dtype=np.float32),
-        "t_from_e": np.asarray(t_from_e, dtype=np.float32),
+        "x": x[keep], "y": y[keep], "z": z[keep],
+        "detector": det[keep],
+        "e_total": e_tot[keep],
+        "e_from_e": e_per_cell[keep].astype(np.float32),
+        "t_from_e": (te_per_cell[keep] / np.maximum(e_per_cell[keep], 1e-30)).astype(np.float32),
     }
 
 
+def cells_for_electron(calo_row: dict, electron_pid: int) -> dict[str, np.ndarray]:
+    """Direct electron contributions only (no descendants)."""
+    return cells_for_particle_set(calo_row, {int(electron_pid)})
+
+
+def cells_for_electron_full(
+    particles_row: dict, calo_row: dict, electron_pid: int
+) -> dict[str, np.ndarray]:
+    """Electron + all descendants via parent_id — the full EM shower."""
+    family = descendant_pids(particles_row, electron_pid)
+    return cells_for_particle_set(calo_row, family)
+
+
 if __name__ == "__main__":
-    print("Loading 5 events of zee_pu200 (first run downloads data)...")
+    print("Loading 5 events of zee_pu200...")
     frames = load_frames(channel="zee", pileup="pu200", max_events=5)
-    print(f"  particles: {frames['particles'].shape}")
-    print(f"  calo_hits: {frames['calo_hits'].shape}")
-
     p_row, c_row = get_event(frames, 0)
-    print(f"\nEvent 0: event_id={p_row['event_id']}, n_calo_cells={len(c_row['x'])}")
-
     electrons = prompt_electrons(p_row)
-    print(f"  prompt electrons: {len(electrons)}")
-    for k, e in enumerate(electrons):
-        pt = np.hypot(e["px"], e["py"])
-        print(f"    [{k}] pid={e['particle_id']} pdg={e['pdg_id']} "
-              f"E={e['energy']:.2f} GeV  pT={pt:.2f} GeV")
-
     if electrons:
-        cells = cells_for_electron(c_row, electrons[0]["particle_id"])
-        n = len(cells["x"])
-        print(f"\n  Electron 0: {n} cells, "
-              f"sum(e_from_e)={cells['e_from_e'].sum():.3f}, "
-              f"sum(e_total)={cells['e_total'].sum():.3f}")
+        e = electrons[0]
+        cells_d = cells_for_electron(c_row, e["particle_id"])
+        cells_f = cells_for_electron_full(p_row, c_row, e["particle_id"])
+        print(f"electron pid={e['particle_id']}  E={e['energy']:.2f} GeV")
+        print(f"  direct      : {len(cells_d['x']):5d} cells, "
+              f"sum(e_from_e)={cells_d['e_from_e'].sum():.4f}")
+        print(f"  + descendants: {len(cells_f['x']):5d} cells, "
+              f"sum(e_from_e)={cells_f['e_from_e'].sum():.4f}")
