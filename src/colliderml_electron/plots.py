@@ -175,3 +175,66 @@ def deposited_vs_truth(
     ax.grid(True, alpha=0.2)
     fig.tight_layout()
     return fig
+
+
+def shower_3d(
+    particles_row: dict,
+    calo_row: dict,
+    electron_pid: int,
+    full_shower: bool = True,
+    show_axis: bool = True,
+    axis_length_mm: float = 4500.0,
+    view_azim: float = 45.0,
+    view_elev: float = 20.0,
+):
+    """3D scatter of one electron's calo cells, color = detector subsystem,
+    marker size = log10(e_from_e). Optionally overlays the electron's flight
+    axis from the IP. Returns the matplotlib Figure.
+    """
+    from .io import cells_for_electron, cells_for_electron_full
+    from .coords import axis_from_momentum
+
+    cells = (cells_for_electron_full(particles_row, calo_row, electron_pid)
+             if full_shower else cells_for_electron(calo_row, electron_pid))
+
+    pids = np.asarray(particles_row["particle_id"])
+    idx = int(np.where(pids == electron_pid)[0][0])
+    px = float(particles_row["px"][idx])
+    py = float(particles_row["py"][idx])
+    pz = float(particles_row["pz"][idx])
+    E = float(particles_row["energy"][idx])
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection="3d")
+
+    if len(cells["x"]) == 0:
+        ax.set_title(f"No cells for electron pid={electron_pid}")
+        return fig
+
+    log_e = np.log10(np.maximum(cells["e_from_e"], 1e-10))
+    s = 6 + 90 * (log_e - log_e.min()) / max(log_e.max() - log_e.min(), 1e-6)
+
+    det = cells["detector"]
+    codes = np.unique(det)
+    cmap = plt.colormaps.get_cmap("tab10")
+    for k, code in enumerate(codes):
+        m = det == code
+        ax.scatter(cells["x"][m], cells["y"][m], cells["z"][m],
+                   s=s[m], c=[cmap(k % 10)], alpha=0.7,
+                   label=f"detector={code} ({m.sum()})")
+
+    if show_axis:
+        a = axis_from_momentum(px, py, pz)
+        line = np.outer(np.array([0.0, axis_length_mm]), a)
+        ax.plot(line[:, 0], line[:, 1], line[:, 2],
+                color="k", linestyle="--", linewidth=1.2, alpha=0.7,
+                label="electron axis")
+
+    ax.set_xlabel("x [mm]"); ax.set_ylabel("y [mm]"); ax.set_zlabel("z [mm]")
+    ax.set_title(f"Electron shower — pid={electron_pid}, "
+                 f"E={E:.1f} GeV, {len(cells['x'])} cells "
+                 f"({'full' if full_shower else 'direct only'})")
+    ax.legend(loc="upper right", fontsize=8)
+    ax.view_init(elev=view_elev, azim=view_azim)
+    fig.tight_layout()
+    return fig
