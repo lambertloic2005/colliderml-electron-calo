@@ -238,3 +238,61 @@ def shower_3d(
     ax.view_init(elev=view_elev, azim=view_azim)
     fig.tight_layout()
     return fig
+
+
+def shower_eta_phi_lego(
+    particles_row: dict,
+    calo_row: dict,
+    electron_pid: int,
+    full_shower: bool = True,
+    half_window: float = 0.4,
+    n_bins: int = 50,
+):
+    """Energy-weighted 2D histogram of (Δη, Δφ) around the electron's
+    truth flight direction. Cell energies are calibrated. Returns the Figure.
+    """
+    from matplotlib.colors import LogNorm
+    from .io import cells_for_electron, cells_for_electron_full
+    from .coords import xyz_to_eta_phi, momentum_to_eta_phi, delta_eta_phi
+    from .calibration import calibrate
+
+    cells = (cells_for_electron_full(particles_row, calo_row, electron_pid)
+             if full_shower else cells_for_electron(calo_row, electron_pid))
+
+    pids = np.asarray(particles_row["particle_id"])
+    idx = int(np.where(pids == electron_pid)[0][0])
+    px = float(particles_row["px"][idx])
+    py = float(particles_row["py"][idx])
+    pz = float(particles_row["pz"][idx])
+    E = float(particles_row["energy"][idx])
+
+    fig, ax = plt.subplots(figsize=(8, 7))
+    if len(cells["x"]) == 0:
+        ax.set_title(f"No cells for electron pid={electron_pid}")
+        return fig
+
+    eta_e, phi_e = momentum_to_eta_phi(px, py, pz)
+    eta_c, phi_c = xyz_to_eta_phi(cells["x"], cells["y"], cells["z"])
+    deta, dphi = delta_eta_phi(eta_c, phi_c, float(eta_e), float(phi_e))
+    e_cal = calibrate(cells["e_from_e"], cells["x"], cells["y"], cells["z"])
+
+    edges = np.linspace(-half_window, half_window, n_bins + 1)
+    H, _, _ = np.histogram2d(deta, dphi, bins=[edges, edges], weights=e_cal)
+
+    Hmax = H.max()
+    pos = H[H > 0]
+    norm = (LogNorm(vmin=max(pos.min(), Hmax * 1e-3), vmax=Hmax)
+            if Hmax > 0 and pos.size else None)
+    im = ax.imshow(H.T, origin="lower",
+                   extent=[edges[0], edges[-1], edges[0], edges[-1]],
+                   aspect="equal", cmap="viridis", norm=norm)
+    fig.colorbar(im, ax=ax, label="calibrated energy [GeV]")
+
+    ax.axhline(0, color="white", linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.axvline(0, color="white", linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.set_xlabel(r"$\Delta\eta$")
+    ax.set_ylabel(r"$\Delta\varphi$")
+    ax.set_title(f"η–φ lego — pid={electron_pid}, E={E:.1f} GeV, "
+                 r"$\eta_0$=" + f"{float(eta_e):.2f}, n_cells={len(cells['x'])}")
+    fig.tight_layout()
+    return fig
