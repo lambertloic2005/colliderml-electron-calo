@@ -147,6 +147,37 @@ def cells_for_electron_full(
     family = descendant_pids(particles_row, electron_pid)
     return cells_for_particle_set(calo_row, family)
 
+def energy_containment_mask(cells, electron, containment = 0.98):
+    from colliderml_electron.coords import (
+        xyz_to_eta_phi,
+        momentum_to_eta_phi,
+        delta_eta_phi,
+    )
+    from colliderml_electron.calibration import calibrate
+
+    eta_e, phi_e = momentum_to_eta_phi(
+        electron["px"], electron["py"], electron["pz"]
+    )
+    eta_c, phi_c = xyz_to_eta_phi(
+        cells["x"], cells["y"], cells["z"]
+    )
+    
+    deta, dphi = delta_eta_phi(
+        eta_c, phi_c, float(eta_e), float(phi_e)
+    )
+    dR = np.sqrt(deta**2 + dphi**2)
+
+    e_cal = calibrate(cells["e_from_e"], cells["x"], cells["y"], cells["z"])
+
+    order = np.argsort(dR)
+    cumulative = np.cumsum(e_cal[order])
+    total = cumulative[-1]
+
+    cutoff_index = np.searchsorted(cumulative, containment*total)
+    R_cut = dR[order[cutoff_index]]
+
+    return dR <= R_cut
+
 
 if __name__ == "__main__":
     print("Loading 5 events of zee_pu200...")
@@ -162,3 +193,5 @@ if __name__ == "__main__":
               f"sum(e_from_e)={cells_d['e_from_e'].sum():.4f}")
         print(f"  + descendants: {len(cells_f['x']):5d} cells, "
               f"sum(e_from_e)={cells_f['e_from_e'].sum():.4f}")
+        
+
