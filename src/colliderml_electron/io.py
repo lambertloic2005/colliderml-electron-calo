@@ -178,6 +178,27 @@ def energy_containment_mask(cells, electron, containment = 0.98):
 
     return dR <= R_cut
 
+def dR_max_mask(cells, electron, dR_max: float = 0.1):
+    from colliderml_electron.coords import (
+        xyz_to_eta_phi,
+        momentum_to_eta_phi,
+        delta_eta_phi,
+    )
+
+    eta_e, phi_e = momentum_to_eta_phi(
+        electron["px"], electron["py"], electron["pz"]
+    )
+    eta_c, phi_c = xyz_to_eta_phi(
+        cells["x"], cells["y"], cells["z"]
+    )
+    
+    deta, dphi = delta_eta_phi(
+        eta_c, phi_c, float(eta_e), float(phi_e)
+    )
+    dR = np.sqrt(deta**2 + dphi**2)
+
+    return dR <= dR_max
+
 
 if __name__ == "__main__":
     print("Loading 5 events of zee_pu200...")
