@@ -186,23 +186,62 @@ def shower_3d(
     axis_length_mm: float = 4500.0,
     view_azim: float = 45.0,
     view_elev: float = 20.0,
+    clean_outliers: bool = False,
+    containment: float = 0.98,
 ):
-    """3D scatter of one electron's calo cells, color = detector subsystem,
-    marker size = log10(e_from_e). Optionally overlays the electron's flight
-    axis from the IP. Returns the matplotlib Figure.
+    """3D scatter of one electron's calo cells.
+
+    color = detector subsystem
+    marker size = log10(e_from_e)
+
+    If clean_outliers=True, applies an energy-containment mask
+    before plotting.
     """
-    from .io import cells_for_electron, cells_for_electron_full
+    from .io import (
+        cells_for_electron,
+        cells_for_electron_full,
+        energy_containment_mask,
+    )
     from .coords import axis_from_momentum
 
-    cells = (cells_for_electron_full(particles_row, calo_row, electron_pid)
-             if full_shower else cells_for_electron(calo_row, electron_pid))
+    cells = (
+        cells_for_electron_full(particles_row, calo_row, electron_pid)
+        if full_shower
+        else cells_for_electron(calo_row, electron_pid)
+    )
 
     pids = np.asarray(particles_row["particle_id"])
     idx = int(np.where(pids == electron_pid)[0][0])
+
     px = float(particles_row["px"][idx])
     py = float(particles_row["py"][idx])
     pz = float(particles_row["pz"][idx])
     E = float(particles_row["energy"][idx])
+
+    electron = {
+        "particle_id": int(electron_pid),
+        "px": px,
+        "py": py,
+        "pz": pz,
+        "energy": E,
+    }
+
+    n_original = len(cells["x"])
+
+    if clean_outliers and n_original > 0:
+        mask = energy_containment_mask(
+            cells,
+            electron,
+            containment=containment,
+        )
+
+        cells = {
+            key: value[mask]
+            for key, value in cells.items()
+        }
+
+    n_after = len(cells["x"])
+    n_removed = n_original - n_after
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection="3d")
@@ -217,25 +256,57 @@ def shower_3d(
     det = cells["detector"]
     codes = np.unique(det)
     cmap = plt.colormaps.get_cmap("tab10")
+
     for k, code in enumerate(codes):
         m = det == code
-        ax.scatter(cells["x"][m], cells["y"][m], cells["z"][m],
-                   s=s[m], c=[cmap(k % 10)], alpha=0.7,
-                   label=f"detector={code} ({m.sum()})")
+        ax.scatter(
+            cells["x"][m],
+            cells["y"][m],
+            cells["z"][m],
+            s=s[m],
+            c=[cmap(k % 10)],
+            alpha=0.7,
+            label=f"detector={code} ({m.sum()})",
+        )
 
     if show_axis:
         a = axis_from_momentum(px, py, pz)
         line = np.outer(np.array([0.0, axis_length_mm]), a)
-        ax.plot(line[:, 0], line[:, 1], line[:, 2],
-                color="k", linestyle="--", linewidth=1.2, alpha=0.7,
-                label="electron axis")
 
-    ax.set_xlabel("x [mm]"); ax.set_ylabel("y [mm]"); ax.set_zlabel("z [mm]")
-    ax.set_title(f"Electron shower — pid={electron_pid}, "
-                 f"E={E:.1f} GeV, {len(cells['x'])} cells "
-                 f"({'full' if full_shower else 'direct only'})")
+        ax.plot(
+            line[:, 0],
+            line[:, 1],
+            line[:, 2],
+            color="k",
+            linestyle="--",
+            linewidth=1.2,
+            alpha=0.7,
+            label="electron axis",
+        )
+
+    ax.set_xlabel("x [mm]")
+    ax.set_ylabel("y [mm]")
+    ax.set_zlabel("z [mm]")
+
+    shower_type = "full" if full_shower else "direct only"
+
+    if clean_outliers:
+        cleaning_text = (
+            f"cleaned, containment={containment:.2f}, "
+            f"removed={n_removed}"
+        )
+    else:
+        cleaning_text = "original"
+
+    ax.set_title(
+        f"Electron shower — pid={electron_pid}, "
+        f"E={E:.1f} GeV, {n_after} cells "
+        f"({shower_type}, {cleaning_text})"
+    )
+
     ax.legend(loc="upper right", fontsize=8)
     ax.view_init(elev=view_elev, azim=view_azim)
+
     fig.tight_layout()
     return fig
 
