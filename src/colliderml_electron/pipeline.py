@@ -38,3 +38,12 @@ def truth_kinematics(electron: dict) -> dict:
         "truth_phi": float(phi),
         "truth_charge": charge,
     }
+
+def build_electron_row(
+    particles_row: dict,
+    calo_row: dict,
+    electron: dict,
+    dR_max: float = 0.1,
+) -> dict | None:
+    
+
