@@ -199,6 +199,34 @@ def dR_max_mask(cells, electron, dR_max: float = 0.1):
 
     return dR <= dR_max
 
+def dbscan_keep_mask(
+    cells,
+    electron,
+    eps: float = 0.04,
+    min_samples: int = 4,
+):
+    from sklearn.cluster import DBSCAN
+    from colliderml_electron.coords import xyz_to_eta_phi
+
+    eta_c, phi_c = xyz_to_eta_phi(cells["x"], cells["y"], cells["z"])
+    X = np.stack([eta_c, phi_c], axis=1)  # (n_cells, 2)
+
+    if len(X) < min_samples:
+        return np.zeros(len(X), dtype=bool)
+
+    labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
+
+    # All cells flagged as noise → nothing to keep
+    if (labels == -1).all():
+        return np.zeros(len(labels), dtype=bool)
+
+    # Pick the cluster with the most total energy — that's the shower
+    e_total = cells["e_total"]
+    cluster_ids = np.unique(labels[labels >= 0])
+    energies = {cid: e_total[labels == cid].sum() for cid in cluster_ids}
+    best_cid = max(energies, key=energies.get)
+
+    return labels == best_cid
 
 if __name__ == "__main__":
     print("Loading 5 events of zee_pu200...")

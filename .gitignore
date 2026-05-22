@@ -28,3 +28,20 @@ plots/
 .vscode/
 .idea/
 .DS_Store
+
+# Generated data — do not commit
+data/
+*.parquet
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.pytest_cache/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
