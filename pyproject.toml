@@ -12,10 +12,11 @@ dependencies = [
     "colliderml>=0.2.0",
     "datasets>=2.20.0",
     "polars>=1.0.0",
-    "numpy>=1.26",
+    "numpy<2",
     "scipy>=1.11",
     "matplotlib>=3.8",
     "scikit-learn>=1.4",
+    "torch==2.2.2",
 ]
 
 [tool.setuptools.packages.find]
