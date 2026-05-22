@@ -1,0 +1,28 @@
+{
+  "os": "macOS-15.7.4-x86_64-i386-64bit",
+  "python": "CPython 3.11.15",
+  "startedAt": "2026-05-22T12:56:53.838304Z",
+  "program": "/Users/loiclambert/code/colliderml-electron-calo/scripts/train_concat-baseline.py",
+  "codePath": "scripts/train_concat-baseline.py",
+  "codePathLocal": "scripts/train_concat-baseline.py",
+  "git": {
+    "remote": "https://github.com/lambertloic2005/colliderml-electron-calo.git",
+    "commit": "5ffab6bc3203b40f507201657692d8e9cf1f358c"
+  },
+  "email": "lambertloic2005@gmail.com",
+  "root": "/Users/loiclambert/code/colliderml-electron-calo",
+  "host": "client-172-18-126-166.eduroam.universite-paris-saclay.fr",
+  "executable": "/Users/loiclambert/code/colliderml-electron-calo/.venv/bin/python3",
+  "cpu_count": 6,
+  "cpu_count_logical": 12,
+  "disk": {
+    "/": {
+      "total": "499963174912",
+      "used": "281568673792"
+    }
+  },
+  "memory": {
+    "total": "17179869184"
+  },
+  "writerId": "2xt7y1rhcdxt6oc4fft0zp5pkm54sim6"
+}

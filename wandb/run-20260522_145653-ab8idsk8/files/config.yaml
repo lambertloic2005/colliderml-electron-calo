@@ -1,0 +1,77 @@
+_wandb:
+    value:
+        cli_version: 0.27.0
+        e:
+            2xt7y1rhcdxt6oc4fft0zp5pkm54sim6:
+                codePath: scripts/train_concat-baseline.py
+                codePathLocal: scripts/train_concat-baseline.py
+                cpu_count: 6
+                cpu_count_logical: 12
+                disk:
+                    /:
+                        total: "499963174912"
+                        used: "281568673792"
+                email: lambertloic2005@gmail.com
+                executable: /Users/loiclambert/code/colliderml-electron-calo/.venv/bin/python3
+                git:
+                    commit: 5ffab6bc3203b40f507201657692d8e9cf1f358c
+                    remote: https://github.com/lambertloic2005/colliderml-electron-calo.git
+                host: client-172-18-126-166.eduroam.universite-paris-saclay.fr
+                memory:
+                    total: "17179869184"
+                os: macOS-15.7.4-x86_64-i386-64bit
+                program: /Users/loiclambert/code/colliderml-electron-calo/scripts/train_concat-baseline.py
+                python: CPython 3.11.15
+                root: /Users/loiclambert/code/colliderml-electron-calo
+                startedAt: "2026-05-22T12:56:53.838304Z"
+                writerId: 2xt7y1rhcdxt6oc4fft0zp5pkm54sim6
+        m: []
+        python_version: 3.11.15
+        t:
+            "1":
+                - 1
+            "2":
+                - 1
+            "3":
+                - 1
+                - 2
+                - 13
+                - 16
+            "4": 3.11.15
+            "5": 0.27.0
+            "12": 0.27.0
+            "13": darwin-x86_64
+architecture:
+    value: concat_transformer_baseline
+batch_size:
+    value: 16
+dataset:
+    value: colliderml_release1_zee_prompt_electrons
+dim_feedforward:
+    value: 256
+dropout:
+    value: 0.1
+learning_rate:
+    value: 0.0001
+log_freq_batches:
+    value: 10
+max_cells:
+    value: 256
+model_dim:
+    value: 128
+n_epochs:
+    value: 20
+n_heads:
+    value: 4
+n_layers:
+    value: 3
+output_dim:
+    value: 6
+parquet_path:
+    value: data/electrons/electrons.parquet
+target_stats_path:
+    value: data/electrons/target_stats.json
+watch_gradients:
+    value: true
+weight_decay:
+    value: 0.0001

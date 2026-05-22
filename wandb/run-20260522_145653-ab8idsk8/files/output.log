@@ -1,0 +1,59 @@
+Using device: mps
+/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/transformer.py:286: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(f"enable_nested_tensor is True, but self.use_nested_tensor is False because {why_not_sparsity_fast_path}")
+Traceback (most recent call last):
+  File "/Users/loiclambert/code/colliderml-electron-calo/scripts/train_concat-baseline.py", line 170, in main
+    pred = model(
+           ^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/src/colliderml_electron/model.py", line 86, in forward
+    h, mask = self.encoder(x_sampled, x_high_level, mask)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/src/colliderml_electron/encoder.py", line 44, in forward
+    h = self.encoder(h, src_key_padding_mask=mask)       # (B, L, D)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/transformer.py", line 391, in forward
+    output = mod(output, src_mask=mask, is_causal=is_causal, src_key_padding_mask=src_key_padding_mask_for_layers)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/transformer.py", line 711, in forward
+    x = x + self._sa_block(self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/transformer.py", line 722, in _sa_block
+    x = self.self_attn(x, x, x,
+        ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1511, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1520, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/activation.py", line 1241, in forward
+    attn_output, attn_output_weights = F.multi_head_attention_forward(
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/functional.py", line 5476, in multi_head_attention_forward
+    attn_output = scaled_dot_product_attention(q, k, v, attn_mask, dropout_p, is_causal)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Invalid buffer size: 4.54 GB

@@ -1,0 +1,1 @@
+{"epoch":20,"_timestamp":1.7794564347718e+09,"_step":8960,"_wandb":{"runtime":1627},"best_val_loss":0.41158083005987034,"batch_idx":440,"grad_norm":14.983983993530273,"checkpoint_path":"checkpoints/concat_baseline.pt","train_loss_batch":0.3497399687767029,"train_loss_epoch":0.1282507047123675,"_runtime":1627.177337524,"val_loss_epoch":0.4393788242731432,"learning_rate":0.0001}

@@ -1,0 +1,18 @@
+{"time":"2026-05-22T14:56:57.641499+02:00","level":"INFO","msg":"wandb-core"}
+{"time":"2026-05-22T14:56:57.642368+02:00","level":"INFO","msg":"stream: starting","core version":"0.27.0"}
+{"time":"2026-05-22T14:56:57.659135+02:00","level":"ERROR","msg":"monitor: failed to initialize xpu resource: monitor: could not start wandb-xpu binary: fork/exec /Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/wandb/bin/wandb-xpu: bad CPU type in executable"}
+{"time":"2026-05-22T14:56:57.82123+02:00","level":"INFO","msg":"stream: created new stream","id":"ab8idsk8"}
+{"time":"2026-05-22T14:56:57.821334+02:00","level":"INFO","msg":"handler: started"}
+{"time":"2026-05-22T14:56:57.821731+02:00","level":"INFO","msg":"stream: started"}
+{"time":"2026-05-22T14:56:57.821747+02:00","level":"INFO","msg":"writer: started","stream_id":"ab8idsk8"}
+{"time":"2026-05-22T14:56:57.821805+02:00","level":"INFO","msg":"sender: started"}
+{"time":"2026-05-22T14:56:58.549698+02:00","level":"INFO","msg":"filestream: sending request","total_files":1,"console_offset":0,"console_lines":1}
+{"time":"2026-05-22T14:56:58.857693+02:00","level":"INFO","msg":"filestream: request sent","status":"200 OK"}
+{"time":"2026-05-22T14:57:10.869482+02:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2026-05-22T14:57:10.869957+02:00","level":"INFO","msg":"filestream: sending request","total_files":2,"console_offset":1,"console_lines":58,"uploaded_len":5,"complete":true,"exit_code":1}
+{"time":"2026-05-22T14:57:11.183016+02:00","level":"INFO","msg":"filestream: request sent","status":"200 OK"}
+{"time":"2026-05-22T14:57:11.18502+02:00","level":"INFO","msg":"handler: operation stats","stats":{}}
+{"time":"2026-05-22T14:57:11.190826+02:00","level":"INFO","msg":"stream: finishing up"}
+{"time":"2026-05-22T14:57:11.190849+02:00","level":"INFO","msg":"handler: closed"}
+{"time":"2026-05-22T14:57:11.191109+02:00","level":"INFO","msg":"sender: closed"}
+{"time":"2026-05-22T14:57:11.191127+02:00","level":"INFO","msg":"stream: all finished"}

@@ -7,6 +7,16 @@ from colliderml_electron.encoder import CellEncoder
 
 
 class ConcatCaloRegressor(nn.Module):
+    """
+    First runnable baseline:
+
+        cells
+        -> select top max_cells cells by energy
+        -> FourierPositionalEncoding
+        -> CellEncoder
+        -> concatenate fixed number of per-cell latent vectors
+        -> MLP regression head
+    """
 
     def __init__(
         self,
@@ -23,9 +33,6 @@ class ConcatCaloRegressor(nn.Module):
         self.max_cells = max_cells
         self.model_dim = model_dim
 
-        # Your dataset gives:
-        # x_sampled: (B, L, 3) -> x, y, z
-        # x_high_level: (B, L, 7) -> log energy + 6 detector one-hot values
         self.fourier_embed = FourierPositionalEncoding(
             input_dim=3,
             high_level_dim=7,
@@ -56,16 +63,62 @@ class ConcatCaloRegressor(nn.Module):
             nn.Linear(256, output_dim),
         )
 
+    def _select_top_cells(
+        self,
+        x_sampled: torch.Tensor,
+        x_high_level: torch.Tensor,
+        mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Select at most max_cells cells before the transformer.
+
+        x_sampled: (B, L, 3)
+        x_high_level: (B, L, 7)
+        mask: (B, L), True = padding, False = real cell
+
+        We use x_high_level[..., 0] as the energy-like score.
+        """
+
+        B, L, _ = x_sampled.shape
+
+        if L <= self.max_cells:
+            return x_sampled, x_high_level, mask
+
+        scores = x_high_level[..., 0]
+
+        # Never choose padding cells unless an event has fewer than max_cells
+        # real cells, in which case some padding is unavoidable.
+        scores = scores.masked_fill(mask, float("-inf"))
+
+        _, idx = torch.topk(
+            scores,
+            k=self.max_cells,
+            dim=1,
+            largest=True,
+            sorted=True,
+        )
+
+        x_sampled = x_sampled.gather(
+            dim=1,
+            index=idx.unsqueeze(-1).expand(-1, -1, x_sampled.shape[-1]),
+        )
+
+        x_high_level = x_high_level.gather(
+            dim=1,
+            index=idx.unsqueeze(-1).expand(-1, -1, x_high_level.shape[-1]),
+        )
+
+        mask = mask.gather(dim=1, index=idx)
+
+        return x_sampled, x_high_level, mask
+
     def _force_fixed_length(self, h: torch.Tensor) -> torch.Tensor:
         """
         h: (B, L, D)
 
-        The MLP head needs a fixed input size, so we force every shower to have
-        exactly max_cells latent vectors.
-
-        If L > max_cells: keep first max_cells cells.
-        If L < max_cells: pad with zero latent vectors.
+        The MLP head needs exactly max_cells vectors.
         """
+
         B, L, D = h.shape
 
         if L > self.max_cells:
@@ -82,18 +135,28 @@ class ConcatCaloRegressor(nn.Module):
         x_high_level: torch.Tensor,
         mask: torch.Tensor,
     ) -> torch.Tensor:
+        """
+        x_sampled: (B, L, 3)
+        x_high_level: (B, L, 7)
+        mask: (B, L), True = padding, False = real cell
+        """
+
+        # Important: reduce sequence length before transformer attention.
+        x_sampled, x_high_level, mask = self._select_top_cells(
+            x_sampled,
+            x_high_level,
+            mask,
+        )
 
         h, mask = self.encoder(x_sampled, x_high_level, mask)
 
-        # Very important: remove padding vectors before concatenation.
-        # The transformer ignores padding as keys/values, but padded output rows
-        # can still contain nonzero vectors, so we zero them manually.
+        # Remove padding vectors before concatenation.
         h = h.masked_fill(mask.unsqueeze(-1), 0.0)
 
         h = self._force_fixed_length(h)
 
-        # Concatenate all fixed-length per-cell vectors into one shower vector.
         z = h.flatten(start_dim=1)
 
         pred = self.head(z)
+
         return pred
