@@ -33,18 +33,6 @@ class CellEncoder(nn.Module):
         self.encoder = nn.TransformerEncoder(layer, num_layers=n_layers)
 
     def forward(self, x_sampled, x_high_level, mask):
-        """
-        Args:
-            x_sampled:    (B, L, 3)      cell positions, padded
-            x_high_level: (B, L, C_hl)   cell content features, padded
-            mask:         (B, L) bool    True = padding, False = real cell
-
-        Returns:
-            h:    (B, L, D)   per-cell encoded vectors. Rows at padding
-                              positions are meaningless — your combine step
-                              MUST exclude them using `mask`.
-            mask: (B, L)      passed straight through for that combine step.
-        """
         # 1. Fourier embed: positions get multi-scale sin/cos; content passes through.
         emb = self.fourier_embed(x_sampled, x_high_level)   # (B, L, fourier_out_dim)
 
