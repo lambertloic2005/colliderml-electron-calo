@@ -7,6 +7,8 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 
 
+use_angular_features: bool = True
+
 # Detector subsystem codes present in the full zee_pu200 data.
 DETECTOR_CODES = [9, 10, 11, 12, 13, 14]
 N_DETECTORS = len(DETECTOR_CODES)
@@ -33,11 +35,15 @@ class ElectronDataset(Dataset):
         parquet_path: str | Path,
         split: str | None = None,
         target_stats_path: str | Path | None = None,
+        use_angular_features: bool = False,
     ):
         df = pl.read_parquet(parquet_path)
+
         if split is not None:
             df = df.filter(pl.col("split") == split)
+
         self.df = df
+        self.use_angular_features = use_angular_features
 
         self.stats = None
         if target_stats_path is not None:
@@ -56,12 +62,31 @@ class ElectronDataset(Dataset):
             np.asarray(row["cell_z"], dtype=np.float32),
         ], axis=-1)  # (n_cells, 3)
 
-        # x_high_level: log-energy + detector one-hot
+        # x_high_level: log-energy + optional angular features + detector one-hot
         e_cal = np.asarray(row["cell_e_calibrated"], dtype=np.float32)
-        log_e = np.log(np.clip(e_cal, 1e-6, None))[:, None]  # (n_cells, 1)
-        det_oh = _one_hot_detector(np.asarray(row["cell_detector"]))
-        x_high_level = np.concatenate([log_e, det_oh], axis=-1)
+        log_e = np.log(np.clip(e_cal, 1e-6, None))[:, None]
 
+        det_oh = _one_hot_detector(np.asarray(row["cell_detector"]))
+
+        if self.use_angular_features:
+            cell_eta = np.asarray(row["cell_eta"], dtype=np.float32)[:, None]
+            cell_phi = np.asarray(row["cell_phi"], dtype=np.float32)
+
+            sin_phi = np.sin(cell_phi)[:, None].astype(np.float32)
+            cos_phi = np.cos(cell_phi)[:, None].astype(np.float32)
+
+            x_high_level = np.concatenate(
+                [
+                    log_e,
+                    cell_eta,
+                    sin_phi,
+                    cos_phi,
+                    det_oh,
+                ],
+                axis=-1,
+            )
+        else:
+            x_high_level = np.concatenate([log_e, det_oh], axis=-1)
         # truth targets
         target = np.array([row[c] for c in TARGET_COLS], dtype=np.float32)
         if self.stats is not None:
@@ -118,11 +143,19 @@ def make_loader(
     batch_size: int = 32,
     shuffle: bool = True,
     num_workers: int = 0,
+    use_angular_features: bool = False,
 ) -> DataLoader:
     ds = ElectronDataset(
-        parquet_path, split=split, target_stats_path=target_stats_path,
+        parquet_path,
+        split=split,
+        target_stats_path=target_stats_path,
+        use_angular_features=use_angular_features,
     )
+
     return DataLoader(
-        ds, batch_size=batch_size, shuffle=shuffle,
-        num_workers=num_workers, collate_fn=collate_pad,
+        ds,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        collate_fn=collate_pad,
     )

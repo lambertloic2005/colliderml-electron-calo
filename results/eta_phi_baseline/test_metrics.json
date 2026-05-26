@@ -1,0 +1,8 @@
+{
+  "test/eta_mae": 2.3089029788970947,
+  "test/eta_rmse": 3.393845558166504,
+  "test/eta_bias": -1.3563621044158936,
+  "test/phi_mae_rad": 1.594740390777588,
+  "test/phi_rmse_rad": 1.8535361289978027,
+  "test/phi_bias_rad": 0.04810355603694916
+}

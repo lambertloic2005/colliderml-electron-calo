@@ -19,14 +19,15 @@ class ConcatCaloRegressor(nn.Module):
     """
 
     def __init__(
-        self,
-        max_cells: int = 256,
-        model_dim: int = 128,
-        n_heads: int = 4,
-        n_layers: int = 3,
-        dim_feedforward: int = 256,
-        dropout: float = 0.1,
-        output_dim: int = 6,
+    self,
+    max_cells: int = 256,
+    model_dim: int = 128,
+    n_heads: int = 4,
+    n_layers: int = 3,
+    dim_feedforward: int = 256,
+    dropout: float = 0.1,
+    output_dim: int = 6,
+    high_level_dim: int = 7,
     ):
         super().__init__()
 
@@ -35,7 +36,7 @@ class ConcatCaloRegressor(nn.Module):
 
         self.fourier_embed = FourierPositionalEncoding(
             input_dim=3,
-            high_level_dim=7,
+            high_level_dim=high_level_dim,
             num_frequencies=[6, 6, 6],
             dim_max=[1100.0, 1100.0, 3000.0],
         )
