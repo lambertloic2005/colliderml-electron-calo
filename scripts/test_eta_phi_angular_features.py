@@ -8,7 +8,7 @@ import wandb
 
 from colliderml_electron.dataset import make_loader, TARGET_COLS
 from colliderml_electron.model import ConcatCaloRegressor
-
+from colliderml_electron.resolution import gaussian_resolution
 
 ETA_INDEX = TARGET_COLS.index("truth_eta")
 PHI_INDEX = TARGET_COLS.index("truth_phi")
@@ -156,7 +156,7 @@ def main():
         n_layers=config["n_layers"],
         dim_feedforward=config["dim_feedforward"],
         dropout=config["dropout"],
-        output_dim=2,
+        output_dim=config["output_dim"],
         high_level_dim=10,
     )
 
@@ -165,13 +165,12 @@ def main():
 
     pred_norm, target_norm = collect_predictions(model, test_loader, device)
 
-    pred = denormalize_eta_phi(pred_norm, stats)
-    true = denormalize_eta_phi(target_norm, stats)
+    eta_mean, eta_std = stats["truth_eta"]["mean"], stats["truth_eta"]["std"]
+    pred_eta = pred_norm[:, 0] * eta_std + eta_mean
+    pred_phi = np.arctan2(pred_norm[:, 2], pred_norm[:, 1])   # decode cos/sin -> radians
 
-    pred_eta = pred[:, 0]
+    true = denormalize_eta_phi(target_norm, stats)            # targets unchanged: 2 cols
     true_eta = true[:, 0]
-
-    pred_phi = wrap_phi(pred[:, 1])
     true_phi = wrap_phi(true[:, 1])
 
     eta_residual = pred_eta - true_eta
@@ -185,6 +184,19 @@ def main():
         "test/phi_rmse_rad": float(np.sqrt(np.mean(phi_residual**2))),
         "test/phi_bias_rad": float(np.mean(phi_residual)),
     }
+
+    eta_fit = gaussian_resolution(eta_residual, wrap=False)
+    phi_fit = gaussian_resolution(phi_residual, wrap=True)
+    metrics.update({
+        "test/eta_sigma":        eta_fit.sigma,
+        "test/eta_bias_fit":     eta_fit.mu,
+        "test/eta_tail_frac":    eta_fit.tail_fraction,
+        "test/phi_sigma_rad":    phi_fit.sigma,
+        "test/phi_bias_fit_rad": phi_fit.mu,
+        "test/phi_tail_frac":    phi_fit.tail_fraction,
+    })
+    print(f"eta  sigma={eta_fit.sigma:.6f}  tail={eta_fit.tail_fraction:.2%}")
+    print(f"phi  sigma={phi_fit.sigma:.6f} rad  tail={phi_fit.tail_fraction:.2%}")
 
     print("\nTest metrics:")
     print(f"eta MAE:       {metrics['test/eta_mae']:.6f}")

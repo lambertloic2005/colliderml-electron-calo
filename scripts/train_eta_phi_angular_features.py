@@ -92,31 +92,26 @@ class EtaPhiLoss(nn.Module):
         self.eta_weight = eta_weight
         self.phi_weight = phi_weight
 
-    def forward(
-        self,
-        pred_eta_phi_norm: torch.Tensor,
-        target_eta_phi_norm: torch.Tensor,
-    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
-        pred_eta_norm = pred_eta_phi_norm[:, 0]
-        pred_phi_norm = pred_eta_phi_norm[:, 1]
+    def forward(self, pred, target_eta_phi_norm):
+        pred_eta_norm = pred[:, 0]
+        phi_cos, phi_sin = pred[:, 1], pred[:, 2]
 
         target_eta_norm = target_eta_phi_norm[:, 0]
         target_phi_norm = target_eta_phi_norm[:, 1]
 
         eta_loss = torch.mean((pred_eta_norm - target_eta_norm) ** 2)
 
-        pred_phi = pred_phi_norm * self.phi_std + self.phi_mean
-        target_phi = target_phi_norm * self.phi_std + self.phi_mean
-
-        delta_phi = wrapped_angle_delta(pred_phi, target_phi)
-
-        phi_residual_norm = delta_phi / self.phi_std
-        phi_loss = torch.mean(phi_residual_norm ** 2)
+        target_phi = target_phi_norm * self.phi_std + self.phi_mean      # radians
+        cos_t, sin_t = torch.cos(target_phi), torch.sin(target_phi)
+        phi_loss = ((phi_cos - cos_t) ** 2 + (phi_sin - sin_t) ** 2).mean()  # = 2(1-cosΔ) on the circle
 
         total_loss = (
-            self.eta_weight * eta_loss
-            + self.phi_weight * phi_loss
+            self.eta_weight * eta_loss + self.phi_weight * phi_loss
         ) / (self.eta_weight + self.phi_weight)
+
+        # decoded phi for diagnostics only
+        pred_phi = torch.atan2(phi_sin, phi_cos)
+        delta_phi = wrapped_angle_delta(pred_phi, target_phi)
 
         logs = {
             "loss_total": total_loss.detach(),
@@ -125,7 +120,6 @@ class EtaPhiLoss(nn.Module):
             "phi_mae_rad": delta_phi.abs().mean().detach(),
             "phi_rmse_rad": torch.sqrt(torch.mean(delta_phi ** 2)).detach(),
         }
-
         return total_loss, logs
 
 
@@ -189,7 +183,7 @@ def main():
         "n_layers": 3,
         "dim_feedforward": 256,
         "dropout": 0.1,
-        "output_dim": 2,
+        "output_dim": 3,
 
         "batch_size": 4,
         "n_epochs": 30,

@@ -1,8 +1,14 @@
 {
-  "test/eta_mae": 0.2455410659313202,
-  "test/eta_rmse": 0.32121121883392334,
-  "test/eta_bias": 0.0773681178689003,
-  "test/phi_mae_rad": 0.41216933727264404,
-  "test/phi_rmse_rad": 0.6057980060577393,
-  "test/phi_bias_rad": 0.06277243047952652
+  "test/eta_mae": 0.15567249059677124,
+  "test/eta_rmse": 0.2069491446018219,
+  "test/eta_bias": 0.10234536975622177,
+  "test/phi_mae_rad": 0.06557508558034897,
+  "test/phi_rmse_rad": 0.08203412592411041,
+  "test/phi_bias_rad": 0.006348886527121067,
+  "test/eta_sigma": 0.1364581249378801,
+  "test/eta_bias_fit": 0.1092931215763092,
+  "test/eta_tail_frac": 0.02088772845953002,
+  "test/phi_sigma_rad": 0.08178807507317362,
+  "test/phi_bias_fit_rad": 0.006348886476208361,
+  "test/phi_tail_frac": 0.0
 }
