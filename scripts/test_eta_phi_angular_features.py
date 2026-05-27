@@ -8,7 +8,7 @@ import wandb
 
 from colliderml_electron.dataset import make_loader, TARGET_COLS
 from colliderml_electron.model import ConcatCaloRegressor
-from colliderml_electron.resolution import gaussian_resolution
+from colliderml_electron.resolution import gaussian_resolution, plot_residual_fit
 
 ETA_INDEX = TARGET_COLS.index("truth_eta")
 PHI_INDEX = TARGET_COLS.index("truth_phi")
@@ -101,17 +101,23 @@ def plot_expected_vs_predicted(true_values, pred_values, name, output_dir):
     return path
 
 
-def plot_residuals(residuals, name, output_dir):
+def plot_residuals(residuals, name, output_dir, unit="", wrap=False):
     path = output_dir / f"residuals_{name}.png"
 
-    plt.figure(figsize=(7, 5))
-    plt.hist(residuals, bins=50)
-    plt.xlabel(f"Prediction - truth for {name}")
-    plt.ylabel("Count")
-    plt.title(f"Residuals: {name}")
-    plt.tight_layout()
-    plt.savefig(path, dpi=150)
-    plt.close()
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    plot_residual_fit(
+        residuals=residuals,
+        name=name,
+        unit=unit,
+        wrap=wrap,
+        bins=60,
+        ax=ax,
+    )
+
+    fig.tight_layout()
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
 
     return path
 
@@ -207,11 +213,23 @@ def main():
     print(f"phi bias rad:  {metrics['test/phi_bias_rad']:.6f}")
 
     plot_paths = [
-        plot_expected_vs_predicted(true_eta, pred_eta, "eta", output_dir),
-        plot_expected_vs_predicted(true_phi, pred_phi, "phi", output_dir),
-        plot_residuals(eta_residual, "eta", output_dir),
-        plot_residuals(phi_residual, "phi", output_dir),
-    ]
+    plot_expected_vs_predicted(true_eta, pred_eta, "eta", output_dir),
+    plot_expected_vs_predicted(true_phi, pred_phi, "phi", output_dir),
+    plot_residuals(
+        eta_residual,
+        "eta",
+        output_dir,
+        unit="",
+        wrap=False,
+    ),
+    plot_residuals(
+        phi_residual,
+        "phi",
+        output_dir,
+        unit="rad",
+        wrap=True,
+    ),
+]
 
     metrics_path = output_dir / "test_metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2))
