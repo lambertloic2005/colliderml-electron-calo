@@ -1,0 +1,14 @@
+{
+  "test/eta_mae": 0.09360749274492264,
+  "test/eta_rmse": 0.11929521709680557,
+  "test/eta_bias": -0.04234890267252922,
+  "test/phi_mae_rad": 0.05496539548039436,
+  "test/phi_rmse_rad": 0.06981100142002106,
+  "test/phi_bias_rad": -0.02139418199658394,
+  "test/eta_sigma": 0.11019532866847491,
+  "test/eta_bias_fit": -0.04142423405638696,
+  "test/eta_tail_frac": 0.0026109660574412663,
+  "test/phi_sigma_rad": 0.06645196982102647,
+  "test/phi_bias_fit_rad": -0.0213941815473363,
+  "test/phi_tail_frac": 0.0
+}

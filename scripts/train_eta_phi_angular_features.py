@@ -6,7 +6,7 @@ from torch import nn
 import wandb
 
 from colliderml_electron.dataset import make_loader, TARGET_COLS
-from colliderml_electron.model import ConcatCaloRegressor
+from colliderml_electron.model import ConcatCaloRegressor, ConvCaloRegressor
 
 
 ETA_INDEX = TARGET_COLS.index("truth_eta")
@@ -169,7 +169,7 @@ def evaluate(
 def main():
     config = {
         "architecture": "concat_transformer_eta_phi_angular_features",
-        "high_level_dim": 10,
+        "high_level_dim": 12,
         "use_angular_features": True,
         "dataset": "colliderml_release1_zee_prompt_electrons",
         "parquet_path": "data/electrons/electrons.parquet",
@@ -195,6 +195,12 @@ def main():
 
         "log_freq_batches": 10,
         "watch_gradients": False,
+
+        "model_type": "conv",     # "concat" reproduces your current baseline
+        "conv_dim": 128,
+        "kernel_size": 5,
+
+        "feature_set": "xyz_loge_eta_phi_theta",
     }
 
     with wandb.init(
@@ -239,16 +245,17 @@ def main():
             use_angular_features=cfg["use_angular_features"],
         )
 
-        model = ConcatCaloRegressor(
-            max_cells=cfg["max_cells"],
-            model_dim=cfg["model_dim"],
-            n_heads=cfg["n_heads"],
-            n_layers=cfg["n_layers"],
-            dim_feedforward=cfg["dim_feedforward"],
-            dropout=cfg["dropout"],
-            output_dim=cfg["output_dim"],
-            high_level_dim=cfg["high_level_dim"],
-        ).to(device)
+        common = dict(
+            max_cells=cfg["max_cells"], model_dim=cfg["model_dim"],
+            n_heads=cfg["n_heads"], n_layers=cfg["n_layers"],
+            dim_feedforward=cfg["dim_feedforward"], dropout=cfg["dropout"],
+            output_dim=cfg["output_dim"], high_level_dim=cfg["high_level_dim"],
+        )
+        if cfg.get("model_type", "concat") == "conv":
+            model = ConvCaloRegressor(**common, conv_dim=cfg["conv_dim"],
+                                      kernel_size=cfg["kernel_size"]).to(device)
+        else:
+            model = ConcatCaloRegressor(**common).to(device)
 
         if cfg["watch_gradients"]:
             run.watch(model, log="gradients", log_freq=100)
@@ -356,7 +363,7 @@ def main():
             )
 
         Path("checkpoints").mkdir(exist_ok=True)
-        checkpoint_path = Path("checkpoints/eta_phi_baseline.pt")
+        checkpoint_path = Path(f"checkpoints/eta_phi_{cfg['model_type']}_theta.pt")    # REPLACE
 
         torch.save(
             {

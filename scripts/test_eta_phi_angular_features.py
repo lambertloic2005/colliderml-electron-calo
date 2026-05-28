@@ -7,7 +7,7 @@ import torch
 import wandb
 
 from colliderml_electron.dataset import make_loader, TARGET_COLS
-from colliderml_electron.model import ConcatCaloRegressor
+from colliderml_electron.model import ConcatCaloRegressor, ConvCaloRegressor
 from colliderml_electron.resolution import gaussian_resolution, plot_residual_fit
 
 ETA_INDEX = TARGET_COLS.index("truth_eta")
@@ -126,10 +126,11 @@ def main():
     device = get_device()
     print(f"Using device: {device}")
 
-    checkpoint_path = Path("checkpoints/eta_phi_baseline.pt")
+    checkpoint_path = Path("checkpoints/eta_phi_conv_theta.pt")
     parquet_path = Path("data/electrons/electrons.parquet")
     stats_path = Path("data/electrons/target_stats.json")
-    output_dir = Path("results/eta_phi_angular_features")
+    output_dir = Path("results/eta_phi_conv_theta")
+
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -155,16 +156,17 @@ def main():
         use_angular_features=True,
     )
 
-    model = ConcatCaloRegressor(
-        max_cells=config["max_cells"],
-        model_dim=config["model_dim"],
-        n_heads=config["n_heads"],
-        n_layers=config["n_layers"],
-        dim_feedforward=config["dim_feedforward"],
-        dropout=config["dropout"],
-        output_dim=config["output_dim"],
-        high_level_dim=10,
+    common = dict(
+        max_cells=config["max_cells"], model_dim=config["model_dim"],
+        n_heads=config["n_heads"], n_layers=config["n_layers"],
+        dim_feedforward=config["dim_feedforward"], dropout=config["dropout"],
+        output_dim=config["output_dim"], high_level_dim=config["high_level_dim"],
     )
+    if config.get("model_type", "concat") == "conv":
+        model = ConvCaloRegressor(**common, conv_dim=config["conv_dim"],
+                                  kernel_size=config["kernel_size"])
+    else:
+        model = ConcatCaloRegressor(**common)
 
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)

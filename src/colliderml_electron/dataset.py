@@ -75,12 +75,20 @@ class ElectronDataset(Dataset):
             sin_phi = np.sin(cell_phi)[:, None].astype(np.float32)
             cos_phi = np.cos(cell_phi)[:, None].astype(np.float32)
 
+            # theta / cos(theta) from the same xyz as x_sampled (coords.py convention)
+            cx = x_sampled[:, 0]; cy = x_sampled[:, 1]; cz = x_sampled[:, 2]
+            r3d = np.sqrt(cx * cx + cy * cy + cz * cz)
+            cos_theta = (cz / np.clip(r3d, 1e-9, None)).astype(np.float32)[:, None]
+            theta = np.arctan2(np.hypot(cx, cy), cz).astype(np.float32)[:, None]
+
             x_high_level = np.concatenate(
                 [
                     log_e,
                     cell_eta,
                     sin_phi,
                     cos_phi,
+                    theta,
+                    cos_theta,
                     det_oh,
                 ],
                 axis=-1,
