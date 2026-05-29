@@ -13,6 +13,7 @@ from .io import (
     descendant_pids,
     cells_for_particle_set,
     dR_max_mask,
+    dbscan_keep_mask,
 )
 from .coords import (
     xyz_to_eta_phi,
@@ -25,7 +26,7 @@ from .calibration import calibrate
 
 def truth_kinematics(electron: dict) -> dict:
     px, py, pz = electron["px"], electron["py"], electron["pz"]
-    p = float(np.sqrt(px**2 + py**2 + px**2))
+    p = float(np.sqrt(px**2 + py**2 + pz**2))
     pt = float(np.sqrt(px**2 + py**2))
     eta, phi = momentum_to_eta_phi(px, py, pz)
     charge = -int(np.sign(electron["pdg_id"])) # pdg_id = +11 -> electron, =-11 -> positron
@@ -36,6 +37,7 @@ def truth_kinematics(electron: dict) -> dict:
         "truth_pz": float(pz),
         "truth_p": p,
         "truth_pt": pt,
+        "truth_log_pt": float(np.log(pt)),
         "truth_eta": float(eta),
         "truth_phi": float(phi),
         "truth_charge": charge,
@@ -46,8 +48,9 @@ def build_electron_row(
     calo_row: dict,
     electron: dict,
     dR_max: float = 0.1,
-    # eta_max: float = 2.5,
-    # pt_min: float = 1.0,
+    mask_kind: str = "dbscan",         # "cone" or "dbscan"
+    eps: float = 0.08,
+    min_samples: int = 2,
 ) -> dict | None:
     # # --- early-rejection cuts on the electron's own kinematics ---
     # px, py, pz = electron["px"], electron["py"], electron["pz"]
@@ -63,10 +66,13 @@ def build_electron_row(
     if len(cells["x"]) == 0:
         return None
     
-    # remove the outliers beyond 0.1 radius
-    keep = dR_max_mask(cells, electron, dR_max)
+    if mask_kind == "dbscan":
+        keep = dbscan_keep_mask(cells, electron, eps=eps, min_samples=min_samples)
+    else:
+        keep = dR_max_mask(cells, electron, dR_max)
     if not keep.any():
         return None
+    
     x = cells["x"][keep]
     y = cells["y"][keep]
     z = cells["z"][keep]
@@ -130,6 +136,9 @@ def build_electron_table(
     pileup: str = "pu200",
     max_events: int | None = None,
     dR_max: float = 0.1,
+    mask_kind: str = "dbscan",        # add
+    eps: float = 0.08,              # add
+    min_samples: int = 2,           # add
     out_path: str | Path = "data/electrons/electrons.parquet",
 ) -> pl.DataFrame:
     home = os.path.expanduser("~")
@@ -180,11 +189,19 @@ def build_electron_table(
                     duplicates += 1
                     continue
                 seen.add(key)
-                rec = build_electron_row(p_row, c_row, e, dR_max=dR_max)
-                if rec is None:
+                row = build_electron_row(
+                    particles_row=p_row,
+                    calo_row=c_row,
+                    electron=e,
+                    dR_max=dR_max,
+                    mask_kind=mask_kind,        # add
+                    eps=eps,                    # add
+                    min_samples=min_samples,    # add
+                )
+                if row is None:
                     skipped += 1
                     continue
-                rows.append(rec)
+                rows.append(row)
             events_done += 1
 
         del p_df, c_df

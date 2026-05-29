@@ -15,7 +15,7 @@ N_DETECTORS = len(DETECTOR_CODES)
 
 TARGET_COLS = [
     "truth_energy", "truth_px", "truth_py", "truth_pz",
-    "truth_eta", "truth_phi",
+    "truth_eta", "truth_phi", "truth_log_pt",
 ]
 
 

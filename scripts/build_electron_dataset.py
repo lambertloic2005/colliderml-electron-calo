@@ -1,5 +1,6 @@
 """CLI: build the per electron training parquet"""
 import argparse
+from html import parser
 from colliderml_electron.pipeline import build_electron_table
 
 def main():
@@ -18,15 +19,20 @@ def main():
     # p.add_argument("--pt-min", type=float, default=1.0,
     #            help="Drop electrons with truth pT < pt_min GeV.")
 
+    p.add_argument("--mask", choices=["cone", "dbscan"], default="cone")
+    p.add_argument("--eps", type=float, default=0.08)
+    p.add_argument("--min-samples", type=int, default=2)
+
     a = p.parse_args()
     build_electron_table(
-        channel = a.channel,
-        pileup = a.pileup,
-        max_events = a.n_events,
-        dR_max = a.dR_max,
-        out_path = a.out,
-        # eta_max = a.eta_max,
-        # pt_min = a.pt_min,
+        channel=a.channel,
+        pileup=a.pileup,
+        max_events=a.n_events,
+        dR_max=a.dR_max,
+        mask_kind=a.mask,
+        eps=a.eps,
+        min_samples=a.min_samples,
+        out_path=a.out,
     )
 
 if __name__ == "__main__":

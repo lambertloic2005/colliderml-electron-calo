@@ -1,0 +1,21 @@
+{
+  "test/eta_mae": 0.12095005810260773,
+  "test/eta_rmse": 0.15373870730400085,
+  "test/eta_bias": -0.04545158892869949,
+  "test/phi_mae_rad": 0.05709637328982353,
+  "test/phi_rmse_rad": 0.07473539561033249,
+  "test/phi_bias_rad": 0.01273327600210905,
+  "test/pt_rel_mae": 0.22650925815105438,
+  "test/pt_rel_rmse": 0.5154536962509155,
+  "test/pt_rel_bias": 0.0010371905518695712,
+  "test/pt_abs_rmse_gev": 9.254321098327637,
+  "test/eta_sigma": 0.1427903639653255,
+  "test/eta_bias_fit": -0.0428671217633514,
+  "test/eta_tail_frac": 0.005221932114882533,
+  "test/phi_sigma_rad": 0.06853928127303917,
+  "test/phi_bias_fit_rad": 0.013905022298230936,
+  "test/phi_tail_frac": 0.007832898172323799,
+  "test/pt_sigma_rel": 0.14318519084080272,
+  "test/pt_bias_fit_rel": -0.08515180284140765,
+  "test/pt_tail_frac": 0.08616187989556134
+}

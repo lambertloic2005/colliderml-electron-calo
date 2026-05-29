@@ -58,5 +58,5 @@ if __name__ == "__main__":
     assign_splits("data/electrons/electrons.parquet")
     compute_target_stats(
         "data/electrons/electrons.parquet",
-        ["truth_energy", "truth_px", "truth_py", "truth_pz", "truth_eta", "truth_phi"],
+        ["truth_energy", "truth_px", "truth_py", "truth_pz", "truth_eta", "truth_phi", "truth_log_pt"],
     )

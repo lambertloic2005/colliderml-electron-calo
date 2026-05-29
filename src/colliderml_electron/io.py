@@ -202,31 +202,65 @@ def dR_max_mask(cells, electron, dR_max: float = 0.1):
 def dbscan_keep_mask(
     cells,
     electron,
-    eps: float = 0.04,
-    min_samples: int = 4,
+    eps: float = 0.08,
+    min_samples: int = 2,
 ):
+    """
+    Density-based outlier mask in (eta, phi) using DBSCAN.
+
+    Replaces a fixed-cone cut: keeps cells in the DBSCAN cluster that contains
+    the truth electron direction, falls back to keeping all family cells if
+    DBSCAN finds no cluster there. Uses a precomputed dR distance matrix so
+    phi wraparound is handled correctly.
+    """
     from sklearn.cluster import DBSCAN
-    from colliderml_electron.coords import xyz_to_eta_phi
+    from colliderml_electron.coords import (
+        xyz_to_eta_phi,
+        momentum_to_eta_phi,
+        delta_eta_phi,
+    )
+
+    n = len(cells["x"])
+    if n == 0:
+        return np.zeros(0, dtype=bool)
 
     eta_c, phi_c = xyz_to_eta_phi(cells["x"], cells["y"], cells["z"])
-    X = np.stack([eta_c, phi_c], axis=1)  # (n_cells, 2)
+    eta_c = np.asarray(eta_c, dtype=float)
+    phi_c = np.asarray(phi_c, dtype=float)
 
-    if len(X) < min_samples:
-        return np.zeros(len(X), dtype=bool)
+    eta_e, phi_e = momentum_to_eta_phi(
+        electron["px"], electron["py"], electron["pz"]
+    )
+    eta_e, phi_e = float(eta_e), float(phi_e)
 
-    labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(X)
+    # Pairwise dR with phi wrapping (uses your existing helper)
+    deta = eta_c[:, None] - eta_c[None, :]
+    _, dphi = delta_eta_phi(
+        eta_c[:, None], phi_c[:, None], eta_c[None, :], phi_c[None, :]
+    )
+    dist = np.sqrt(deta ** 2 + dphi ** 2)
 
-    # All cells flagged as noise → nothing to keep
-    if (labels == -1).all():
-        return np.zeros(len(labels), dtype=bool)
+    # min_samples=1 would let every point be its own cluster; guard that
+    eff_min_samples = min(min_samples, max(n, 1))
 
-    # Pick the cluster with the most total energy — that's the shower
-    e_total = cells["e_total"]
-    cluster_ids = np.unique(labels[labels >= 0])
-    energies = {cid: e_total[labels == cid].sum() for cid in cluster_ids}
-    best_cid = max(energies, key=energies.get)
+    labels = DBSCAN(
+        eps=eps, min_samples=eff_min_samples, metric="precomputed"
+    ).fit_predict(dist)
 
-    return labels == best_cid
+    # Pick the cluster containing the cell closest to the truth direction.
+    # This is more robust in pu200 than picking by total energy: a nearby
+    # pileup hotspot can outweigh a real shower whose cells got split.
+    deta_t, dphi_t = delta_eta_phi(eta_c, phi_c, eta_e, phi_e)
+    dR_truth = np.sqrt(deta_t ** 2 + dphi_t ** 2)
+    nearest = int(np.argmin(dR_truth))
+    chosen = labels[nearest]
+
+    if chosen == -1:
+        # truth-nearest cell is noise -> DBSCAN didn't find the shower
+        # keep all family cells (no outlier filter) rather than drop the electron
+        return np.ones(n, dtype=bool)
+
+    return labels == chosen
 
 if __name__ == "__main__":
     print("Loading 5 events of zee_pu200...")
