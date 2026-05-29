@@ -215,7 +215,7 @@ def main():
         "high_level_dim": 12,
         "use_angular_features": True,
         "dataset": "colliderml_release1_zee_prompt_electrons",
-        "parquet_path": "data/electrons/electrons.parquet",
+        "parquet_path": "data/electrons/electrons_dbscan.parquet",
         "target_stats_path": "data/electrons/target_stats.json",
 
         "target_cols": ["truth_eta", "truth_phi", "truth_log_pt"],
@@ -416,7 +416,7 @@ def main():
             )
 
         Path("checkpoints").mkdir(exist_ok=True)
-        checkpoint_path = Path(f"checkpoints/eta_phi_pt_{cfg['model_type']}.pt")
+        checkpoint_path = Path(f"checkpoints/eta_phi_pt_{cfg['model_type']}_dbscan.pt")
 
         torch.save(
             {
@@ -431,7 +431,7 @@ def main():
         )
 
         artifact = wandb.Artifact(
-            name="eta_phi_pt_baseline",
+            name="eta_phi_pt_dbscan",
             type="model",
             metadata={
                 "best_val_loss": best_val_loss,
