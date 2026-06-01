@@ -262,6 +262,17 @@ def dbscan_keep_mask(
 
     return labels == chosen
 
+def all_event_cells(calo_row: dict) -> dict[str, np.ndarray]:
+    """All calorimeter cells of an event, observable quantities only.
+    Truth-free: uses NO contrib_particle_ids / MC truth."""
+    return {
+        "x": np.asarray(calo_row["x"], dtype=np.float32),
+        "y": np.asarray(calo_row["y"], dtype=np.float32),
+        "z": np.asarray(calo_row["z"], dtype=np.float32),
+        "detector": np.asarray(calo_row["detector"], dtype=np.int32),
+        "e_total": np.asarray(calo_row["total_energy"], dtype=np.float32),
+    }
+
 if __name__ == "__main__":
     print("Loading 5 events of zee_pu200...")
     frames = load_frames(channel="zee", pileup="pu200", max_events=5)

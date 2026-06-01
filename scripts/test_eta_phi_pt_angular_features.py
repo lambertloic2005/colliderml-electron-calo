@@ -141,10 +141,10 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-    checkpoint_path = Path("checkpoints/eta_phi_pt_conv.pt")
-    parquet_path = Path("data/electrons/electrons.parquet")
+    checkpoint_path = Path(f"checkpoints/eta_phi_pt_conv_dbscan.pt")
+    parquet_path = Path("data/electrons/electrons_dbscan.parquet")
     stats_path = Path("data/electrons/target_stats.json")
-    output_dir = Path("results/eta_phi_pt_conv")
+    output_dir = Path("results/eta_phi_pt_dbscan")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
