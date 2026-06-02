@@ -55,8 +55,8 @@ def compute_target_stats(
     return stats
 
 if __name__ == "__main__":
-    assign_splits("data/electrons/electrons.parquet")
+    assign_splits("data/electrons/electrons_dbscan.parquet")
     compute_target_stats(
-        "data/electrons/electrons.parquet",
+        "data/electrons/electrons_dbscan.parquet",
         ["truth_energy", "truth_px", "truth_py", "truth_pz", "truth_eta", "truth_phi", "truth_log_pt"],
     )

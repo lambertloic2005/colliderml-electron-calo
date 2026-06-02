@@ -70,6 +70,7 @@ def collect_predictions(model, loader, device):
 
     preds = []
     targets = []
+    centroids = []
 
     for batch in loader:
         batch = move_batch_to_device(batch, device)
@@ -85,11 +86,13 @@ def collect_predictions(model, loader, device):
 
         preds.append(pred.cpu().numpy())
         targets.append(target.cpu().numpy())
+        centroids.append(batch["phi_centroid"].cpu().numpy())
 
     preds = np.concatenate(preds, axis=0)
     targets = np.concatenate(targets, axis=0)
+    centroids = np.concatenate(centroids, axis=0)
 
-    return preds, targets
+    return preds, targets, centroids
 
 
 def plot_expected_vs_predicted(true_values, pred_values, name, output_dir, unit=""):
@@ -141,10 +144,10 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-    checkpoint_path = Path("checkpoints/eta_phi_pt_conv_dbscan.pt")
-    parquet_path = Path("data/clusters/clusters.parquet")
-    stats_path = Path("data/clusters/target_stats.json")
-    output_dir = Path("results/eta_phi_pt_conv_clusters")
+    checkpoint_path = Path("checkpoints/eta_phi_pt_conv_dbscan_energy.pt")
+    parquet_path = Path("data/electrons/electrons_dbscan.parquet")
+    stats_path = Path("data/electrons/target_stats.json")
+    output_dir = Path("results/eta_phi_pt_conv_dbscan_energy.pt")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -163,6 +166,7 @@ def main():
         batch_size=config["batch_size"],
         shuffle=False,
         use_angular_features=True,
+        use_cluster_features=config.get("use_cluster_features", False),
     )
 
     common = dict(
@@ -180,7 +184,7 @@ def main():
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
 
-    pred_norm, target_norm = collect_predictions(model, test_loader, device)
+    pred_norm, target_norm, phi_centroid = collect_predictions(model, test_loader, device)
 
     eta_mean, eta_std = stats["truth_eta"]["mean"], stats["truth_eta"]["std"]
     phi_mean, phi_std = stats["truth_phi"]["mean"], stats["truth_phi"]["std"]
@@ -188,7 +192,8 @@ def main():
 
     # ---- decode predictions ----
     pred_eta = pred_norm[:, 0] * eta_std + eta_mean
-    pred_phi = np.arctan2(pred_norm[:, 2], pred_norm[:, 1])      # cos/sin -> radians
+    pred_delta = np.arctan2(pred_norm[:, 2], pred_norm[:, 1])    # cos/sin -> DELTA phi
+    pred_phi = wrap_phi(phi_centroid + pred_delta)               # add anchor back
     pred_logpt = pred_norm[:, 3] * logpt_std + logpt_mean
     pred_pt = np.exp(pred_logpt)                                  # GeV
 
@@ -203,6 +208,13 @@ def main():
     phi_residual = angular_residual(pred_phi, true_phi)
     pt_rel_residual = (pred_pt - true_pt) / true_pt               # fractional (thesis-style)
 
+    # clean, bounded fractional-pT resolution (d ln pT ~ dpT/pT); not blown up
+    # by low-pT electrons the way the linear relative residual is.
+    logpt_residual = pred_logpt - true_logpt
+    PT_FLOOR_GEV = 5.0
+    hi = true_pt >= PT_FLOOR_GEV
+    pt_rel_hi = pt_rel_residual[hi]
+
     metrics = {
         "test/eta_mae": float(np.mean(np.abs(eta_residual))),
         "test/eta_rmse": float(np.sqrt(np.mean(eta_residual**2))),
@@ -214,11 +226,16 @@ def main():
         "test/pt_rel_rmse": float(np.sqrt(np.mean(pt_rel_residual**2))),
         "test/pt_rel_bias": float(np.mean(pt_rel_residual)),
         "test/pt_abs_rmse_gev": float(np.sqrt(np.mean((pred_pt - true_pt) ** 2))),
+        "test/logpt_rmse": float(np.sqrt(np.mean(logpt_residual**2))),
+        "test/logpt_bias": float(np.mean(logpt_residual)),
+        f"test/pt_rel_mae_above_{int(PT_FLOOR_GEV)}gev": float(np.mean(np.abs(pt_rel_hi))) if hi.any() else float("nan"),
+        f"test/pt_rel_rmse_above_{int(PT_FLOOR_GEV)}gev": float(np.sqrt(np.mean(pt_rel_hi**2))) if hi.any() else float("nan"),
     }
 
     eta_fit = gaussian_resolution(eta_residual, wrap=False)
     phi_fit = gaussian_resolution(phi_residual, wrap=True)
     pt_fit = gaussian_resolution(pt_rel_residual, wrap=False)
+    logpt_fit = gaussian_resolution(logpt_residual, wrap=False)
     metrics.update({
         "test/eta_sigma":        eta_fit.sigma,
         "test/eta_bias_fit":     eta_fit.mu,
@@ -229,6 +246,8 @@ def main():
         "test/pt_sigma_rel":     pt_fit.sigma,        # fractional pT resolution
         "test/pt_bias_fit_rel":  pt_fit.mu,
         "test/pt_tail_frac":     pt_fit.tail_fraction,
+        "test/logpt_sigma":      logpt_fit.sigma,     # clean fractional pT resolution
+        "test/logpt_tail_frac":  logpt_fit.tail_fraction,
     })
 
     print(f"eta  sigma={eta_fit.sigma:.6f}       tail={eta_fit.tail_fraction:.2%}")

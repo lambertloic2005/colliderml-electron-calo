@@ -36,6 +36,7 @@ class ElectronDataset(Dataset):
         split: str | None = None,
         target_stats_path: str | Path | None = None,
         use_angular_features: bool = False,
+        use_cluster_features: bool = False,
     ):
         df = pl.read_parquet(parquet_path)
 
@@ -44,6 +45,7 @@ class ElectronDataset(Dataset):
 
         self.df = df
         self.use_angular_features = use_angular_features
+        self.use_cluster_features = use_cluster_features
 
         self.stats = None
         if target_stats_path is not None:
@@ -95,7 +97,37 @@ class ElectronDataset(Dataset):
             )
         else:
             x_high_level = np.concatenate([log_e, det_oh], axis=-1)
+
+        # --- cluster-level scalars (over ALL cells, before any topk truncation),
+        # broadcast to every cell. Appended at the END so x_high_level[..., 0]
+        # stays log_e (the topk energy score). phi_centroid is the residual-phi
+        # anchor and is always returned. ---
+        cell_phi_all = np.asarray(row["cell_phi"], dtype=np.float64)
+        w = np.clip(e_cal.astype(np.float64), 1e-9, None)
+        phi_centroid = float(
+            np.arctan2(
+                np.average(np.sin(cell_phi_all), weights=w),
+                np.average(np.cos(cell_phi_all), weights=w),
+            )
+        )
+
+        if self.use_cluster_features:
+            sum_e = float(e_cal.sum())                       # total calibrated E [GeV]
+            cx = x_sampled[:, 0]; cy = x_sampled[:, 1]; cz = x_sampled[:, 2]
+            r3d = np.sqrt(cx * cx + cy * cy + cz * cz)
+            sin_theta = (np.hypot(cx, cy) / np.clip(r3d, 1e-9, None)).astype(np.float64)
+            sum_et = float((e_cal.astype(np.float64) * sin_theta).sum())  # transverse-E proxy
+
+            n = x_high_level.shape[0]
+            cluster_feats = np.array(
+                [np.log(max(sum_e, 1e-6)), np.log(max(sum_et, 1e-6)), np.log(max(n, 1))],
+                dtype=np.float32,
+            )
+            x_high_level = np.concatenate(
+                [x_high_level, np.tile(cluster_feats, (n, 1))], axis=-1
+            )
         # truth targets
+
         target = np.array([row[c] for c in TARGET_COLS], dtype=np.float32)
         if self.stats is not None:
             for i, c in enumerate(TARGET_COLS):
@@ -106,6 +138,7 @@ class ElectronDataset(Dataset):
             "x_high_level": torch.from_numpy(x_high_level),
             "target":       torch.from_numpy(target),
             "n_cells":      x_sampled.shape[0],
+            "phi_centroid": torch.tensor(phi_centroid, dtype=torch.float32),
         }
 
 
@@ -128,6 +161,7 @@ def collate_pad(batch: list[dict]) -> dict:
     x_high_level = torch.zeros(B, L, D_high)
     mask         = torch.ones(B, L, dtype=torch.bool)  # True = padding
     target       = torch.zeros(B, T)
+    phi_centroid = torch.zeros(B)
 
     for i, item in enumerate(batch):
         n = item["n_cells"]
@@ -135,12 +169,14 @@ def collate_pad(batch: list[dict]) -> dict:
         x_high_level[i, :n] = item["x_high_level"]
         mask[i, :n] = False
         target[i] = item["target"]
+        phi_centroid[i] = item["phi_centroid"]
 
     return {
         "x_sampled": x_sampled,
         "x_high_level": x_high_level,
         "mask": mask,
         "target": target,
+        "phi_centroid": phi_centroid,
     }
 
 
@@ -152,12 +188,14 @@ def make_loader(
     shuffle: bool = True,
     num_workers: int = 0,
     use_angular_features: bool = False,
+    use_cluster_features: bool = False,
 ) -> DataLoader:
     ds = ElectronDataset(
         parquet_path,
         split=split,
         target_stats_path=target_stats_path,
         use_angular_features=use_angular_features,
+        use_cluster_features=use_cluster_features,
     )
 
     return DataLoader(

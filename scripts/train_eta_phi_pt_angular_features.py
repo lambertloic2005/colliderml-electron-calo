@@ -120,9 +120,10 @@ class KinematicLoss(nn.Module):
         self.phi_weight = phi_weight
         self.logpt_weight = logpt_weight
 
-    def forward(self, pred, target):
-        # pred:   [eta, phi_cos, phi_sin, log_pt]
+    def forward(self, pred, target, phi_centroid):
+        # pred:   [eta, phi_cos, phi_sin, log_pt]   (phi pair = cos/sin of DELTA phi)
         # target: [eta_norm, phi_norm, logpt_norm]  (gathered in this order)
+        # phi_centroid: (B,) energy-weighted cluster phi anchor, in radians
         pred_eta_norm = pred[:, 0]
         phi_cos, phi_sin = pred[:, 1], pred[:, 2]
         pred_logpt_norm = pred[:, 3]
@@ -133,8 +134,9 @@ class KinematicLoss(nn.Module):
 
         eta_loss = torch.mean((pred_eta_norm - target_eta_norm) ** 2)
 
-        target_phi = target_phi_norm * self.phi_std + self.phi_mean      # radians
-        cos_t, sin_t = torch.cos(target_phi), torch.sin(target_phi)
+        target_phi = target_phi_norm * self.phi_std + self.phi_mean      # absolute radians
+        delta_target = wrapped_angle_delta(target_phi, phi_centroid)     # residual, wrapped
+        cos_t, sin_t = torch.cos(delta_target), torch.sin(delta_target)
         phi_loss = ((phi_cos - cos_t) ** 2 + (phi_sin - sin_t) ** 2).mean()
 
         logpt_loss = torch.mean((pred_logpt_norm - target_logpt_norm) ** 2)
@@ -146,8 +148,9 @@ class KinematicLoss(nn.Module):
             + self.logpt_weight * logpt_loss
         ) / w
 
-        # diagnostics
-        pred_phi = torch.atan2(phi_sin, phi_cos)
+        # diagnostics: decode predicted delta, add the anchor back, compare to truth
+        pred_delta = torch.atan2(phi_sin, phi_cos)
+        pred_phi = phi_centroid + pred_delta
         delta_phi = wrapped_angle_delta(pred_phi, target_phi)
         # residual in un-normalized ln(pT) ~ dpT/pT -> fractional pT resolution
         d_lnpt = (pred_logpt_norm - target_logpt_norm) * self.logpt_std
@@ -196,7 +199,7 @@ def evaluate(
 
         target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX]]
 
-        loss, logs = loss_fn(pred, target)
+        loss, logs = loss_fn(pred, target, batch["phi_centroid"])
 
         for key in totals:
             totals[key] += logs[key].item()
@@ -212,11 +215,12 @@ def evaluate(
 def main():
     config = {
         "architecture": "concat_transformer_eta_phi_pt_angular_features",
-        "high_level_dim": 12,
+        "high_level_dim": 15,
         "use_angular_features": True,
+        "use_cluster_features": True,
         "dataset": "colliderml_release1_zee_prompt_electrons",
-        "parquet_path": "data/clusters/clusters.parquet",
-        "target_stats_path": "data/clusters/target_stats.json",
+        "parquet_path": "data/electrons/electrons.parquet",
+        "target_stats_path": "data/electrons/target_stats.json",
 
         "target_cols": ["truth_eta", "truth_phi", "truth_log_pt"],
 
@@ -228,10 +232,11 @@ def main():
         "dropout": 0.1,
         "output_dim": 4,
 
-        "batch_size": 4,
-        "n_epochs": 30,
-        "learning_rate": 1e-4,
+        "batch_size": 64,
+        "n_epochs": 60,
+        "learning_rate": 3e-4,
         "weight_decay": 1e-4,
+        "warmup_epochs": 3,
 
         "eta_weight": 1.0,
         "phi_weight": 1.0,
@@ -278,6 +283,7 @@ def main():
             batch_size=cfg["batch_size"],
             shuffle=True,
             use_angular_features=cfg["use_angular_features"],
+            use_cluster_features=cfg["use_cluster_features"],
         )
 
         val_loader = make_loader(
@@ -287,6 +293,7 @@ def main():
             batch_size=cfg["batch_size"],
             shuffle=False,
             use_angular_features=cfg["use_angular_features"],
+            use_cluster_features=cfg["use_cluster_features"],
         )
 
         common = dict(
@@ -317,6 +324,18 @@ def main():
             weight_decay=cfg["weight_decay"],
         )
 
+        warmup = cfg.get("warmup_epochs", 0)
+        n_epochs = cfg["n_epochs"]
+
+        def lr_lambda(epoch):  # epoch is 0-indexed by LambdaLR
+            if warmup > 0 and epoch < warmup:
+                return (epoch + 1) / warmup
+            import math
+            progress = (epoch - warmup) / max(1, n_epochs - warmup)
+            return 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
         global_step = 0
         best_val_loss = float("inf")
         best_val_phi_loss = float("inf")
@@ -342,7 +361,7 @@ def main():
 
                 target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX]]
 
-                loss, logs = loss_fn(pred, target)
+                loss, logs = loss_fn(pred, target, batch["phi_centroid"])
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -416,6 +435,8 @@ def main():
                 step=global_step,
             )
 
+            scheduler.step()
+
             print(
                 f"epoch {epoch:03d} | "
                 f"train loss {train_loss:.6f} | "
@@ -427,7 +448,7 @@ def main():
             )
 
         Path("checkpoints").mkdir(exist_ok=True)
-        checkpoint_path = Path(f"checkpoints/eta_phi_pt{cfg['model_type']}_clusters.pt")
+        checkpoint_path = Path(f"checkpoints/eta_phi_pt_{cfg['model_type']}_dbscan_energy.pt")
 
         if best_state is not None:
             model.load_state_dict(best_state)
