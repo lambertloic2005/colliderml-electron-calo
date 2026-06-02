@@ -215,8 +215,8 @@ def main():
         "high_level_dim": 12,
         "use_angular_features": True,
         "dataset": "colliderml_release1_zee_prompt_electrons",
-        "parquet_path": "data/electrons/electrons_dbscan.parquet",
-        "target_stats_path": "data/electrons/target_stats.json",
+        "parquet_path": "data/clusters/clusters.parquet",
+        "target_stats_path": "data/clusters/target_stats.json",
 
         "target_cols": ["truth_eta", "truth_phi", "truth_log_pt"],
 
@@ -322,6 +322,9 @@ def main():
         best_val_phi_loss = float("inf")
         best_val_pt_rel_rmse = float("inf")
 
+        best_state = None
+        epochs_no_improve = 0
+
         for epoch in range(1, cfg["n_epochs"] + 1):
             model.train()
 
@@ -381,7 +384,15 @@ def main():
             )
 
             val_loss = val_logs["loss_total"]
-            best_val_loss = min(best_val_loss, val_loss)
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+                epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
+            if epochs_no_improve >= 8:          # early stopping patience
+                print(f"early stop at epoch {epoch}")
+                break
             best_val_phi_loss = min(best_val_phi_loss, val_logs["loss_phi"])
             best_val_pt_rel_rmse = min(best_val_pt_rel_rmse, val_logs["pt_rel_rmse"])
 
@@ -416,7 +427,10 @@ def main():
             )
 
         Path("checkpoints").mkdir(exist_ok=True)
-        checkpoint_path = Path(f"checkpoints/eta_phi_pt_{cfg['model_type']}_dbscan.pt")
+        checkpoint_path = Path(f"checkpoints/eta_phi_pt{cfg['model_type']}_clusters.pt")
+
+        if best_state is not None:
+            model.load_state_dict(best_state)
 
         torch.save(
             {
