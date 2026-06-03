@@ -105,6 +105,8 @@ rsync -a --delete \
     --exclude "runs" \
     --exclude "results" \
     --exclude "checkpoints" \
+    --exclude "notebooks" \
+    --exclude "tests" \
     --exclude "data/electrons/*.parquet" \
     "$PROJECT_DIR/" "$WORKDIR/"
 
