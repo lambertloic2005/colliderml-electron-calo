@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import polars as pl
+
 def compute_target_stats(
     parquet_path: str | Path,
     target_cols: list[str],
@@ -20,4 +22,3 @@ if __name__ == "__main__":
         "data/electrons/electrons.parquet",
         ["truth_energy", "truth_px", "truth_py", "truth_pz", "truth_eta", "truth_phi"],
     )
-

@@ -65,6 +65,13 @@ GB = 1024 ** 3
 # Approximate events per shard, only used to print a friendly event estimate.
 # pu200 ships ~100 events/shard, pu0 ~1000 (per the colliderml download docs).
 EVENTS_PER_SHARD = {"pu0": 1000, "pu200": 100}
+# Fallback target columns, kept in sync with dataset.TARGET_COLS. We import the
+# real list at runtime (so the two never drift); this is only used if that import
+# fails -- e.g. running the stats stage in an env without torch installed.
+DEFAULT_TARGET_COLS = [
+    "truth_energy", "truth_px", "truth_py", "truth_pz",
+    "truth_eta", "truth_phi", "truth_log_pt",
+]
 
 
 def _builder_cache_root() -> Path:
@@ -249,6 +256,47 @@ def stage_process(args) -> None:
     )
 
 
+def stage_stats(args) -> None:
+    """Assign event-level train/val/test splits in the electron parquet, then
+    write target_stats.json (mean/std of each target column over the TRAIN split).
+    This is what ElectronDataset / the training+test scripts consume."""
+    try:
+        from colliderml_electron.splits import assign_splits, compute_target_stats
+    except ModuleNotFoundError as exc:
+        sys.exit(f"ERROR: cannot import colliderml_electron.splits ({exc}). "
+                 f"Run `pip install -e .` in the repo root first.")
+
+    # Keep target columns in lock-step with the dataset; fall back if torch
+    # (a dataset.py import) isn't available in this environment.
+    try:
+        from colliderml_electron.dataset import TARGET_COLS
+    except Exception:
+        TARGET_COLS = DEFAULT_TARGET_COLS
+
+    parquet = Path(args.out)
+    if not parquet.exists():
+        sys.exit(f"ERROR: {parquet} not found. Run the process stage first "
+                 f"(it writes the electron parquet that splits/stats operate on).")
+
+    stats_out = Path(args.target_stats_out) if args.target_stats_out else parquet.with_name("target_stats.json")
+    stats_out.parent.mkdir(parents=True, exist_ok=True)
+
+    # assign_splits rewrites the parquet in place, adding/overwriting a "split"
+    # column at the EVENT level (all electrons of an event share a split), so
+    # cells from one event never leak across train/val/test.
+    print(f"Assigning {args.train_frac:.0%}/{args.val_frac:.0%}/"
+          f"{1 - args.train_frac - args.val_frac:.0%} splits (seed={args.split_seed}) in {parquet}")
+    assign_splits(
+        parquet,
+        train_frac=args.train_frac,
+        val_frac=args.val_frac,
+        seed=args.split_seed,
+    )
+
+    print(f"Computing target stats over the train split -> {stats_out}")
+    compute_target_stats(parquet, TARGET_COLS, out_path=str(stats_out))
+
+
 # --------------------------------------------------------------------------- #
 # cache-path bridge
 # --------------------------------------------------------------------------- #
@@ -302,7 +350,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Size-capped ColliderML download + supervised per-electron DBSCAN processing.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--stage", choices=["all", "download", "process"], default="all")
+    p.add_argument("--stage", choices=["all", "download", "process", "stats"], default="all",
+                   help="'all' runs download -> process -> stats.")
 
     # dataset selection
     p.add_argument("--channel", default="zee")
@@ -337,11 +386,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dR-max", type=float, default=0.1,
                    help="Cone radius around the truth direction (used when --mask-kind cone).")
 
+    # split + target-stats (stats stage)
+    p.add_argument("--train-frac", type=float, default=0.70,
+                   help="Event-level train fraction for the split assignment.")
+    p.add_argument("--val-frac", type=float, default=0.15,
+                   help="Event-level val fraction (test = 1 - train - val).")
+    p.add_argument("--split-seed", type=int, default=42,
+                   help="RNG seed for the event-level split (keep fixed for reproducibility).")
+    p.add_argument("--target-stats-out", default=None,
+                   help="Where to write target_stats.json (default: alongside --out).")
+
     # process output / limiting
     p.add_argument("--n-events", type=int, default=None,
                    help="Limit events processed in the process stage (default: all downloaded).")
     p.add_argument("--out", default="data/electrons/electrons.parquet",
-                   help="Output parquet for the process stage (use an absolute path).")
+                   help="Output parquet for the process stage; the stats stage adds a "
+                        "split column to it and writes target_stats.json next to it. "
+                        "Use an absolute path.")
     return p
 
 
@@ -354,6 +415,8 @@ def main() -> None:
         stage_download(args)
     if args.stage in ("all", "process"):
         stage_process(args)
+    if args.stage in ("all", "stats"):
+        stage_stats(args)
 
 
 if __name__ == "__main__":
