@@ -142,7 +142,7 @@ def build_electron_table(
     out_path: str | Path = "data/electrons/electrons.parquet",
 ) -> pl.DataFrame:
     home = os.path.expanduser("~")
-    base = f"{home}/.cache/colliderml/CERN__ColliderML-Release-1"
+    base = os.environ.get("COLLIDERML_DATA_DIR", f"{home}/.cache/colliderml") + "/CERN__ColliderML-Release-1"
     p_pat = f"{base}/{channel}_{pileup}_particles/data/{channel}_{pileup}_particles/train-*.parquet"
     c_pat = f"{base}/{channel}_{pileup}_calo_hits/data/{channel}_{pileup}_calo_hits/train-*.parquet"
 
@@ -223,6 +223,3 @@ def build_electron_table(
 
 if __name__ == "__main__":
     build_electron_table()
-
-    
-
