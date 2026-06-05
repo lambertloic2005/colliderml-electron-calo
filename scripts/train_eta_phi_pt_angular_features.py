@@ -448,7 +448,7 @@ def main():
             )
 
         Path("checkpoints").mkdir(exist_ok=True)
-        checkpoint_path = Path(f"checkpoints/eta_phi_pt_{cfg['model_type']}_dbscan_energy.pt")
+        checkpoint_path = Path("checkpoints/ruche_eta_phi_pt_supervised_dbscan.pt")
 
         if best_state is not None:
             model.load_state_dict(best_state)

@@ -108,7 +108,7 @@ rsync -av "$SOURCE_STATS_FILE" "$WORKDIR/data/electrons/target_stats.json"
 
 # Training script expects data/electrons/electrons.parquet.
 cd "$WORKDIR/data/electrons"
-ln -sf zee_pu200_supervised_dbscan.parquet electrons.parquet
+ln -sf electrons_dbscan.parquet electrons.parquet
 
 cd "$WORKDIR"
 
@@ -191,9 +191,8 @@ python -m pip install -e . --no-deps
 # Use non-interactive plotting for saved figures.
 export MPLBACKEND=Agg
 
-# Offline W&B means logs are saved locally.
-# Change to online if you already ran: wandb login
-export WANDB_MODE=offline
+# Set WANDB to online mode to log metrics and artifacts to the cloud.
+export WANDB_MODE=online
 
 # Match CPU thread usage to the CPUs requested from SLURM.
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
