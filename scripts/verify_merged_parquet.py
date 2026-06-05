@@ -8,7 +8,7 @@ import polars as pl
 
 
 # Change these if your paths are different
-MERGED = Path("/data/atlas/lambert/processed/electrons_dbscan.parquet")
+MERGED = Path("/data/atlas/lambert/processed/zee_pu200_supervised_dbscan.parquet")
 PARTS_GLOB = "/data/atlas/lambert/processed/parts/part_*.parquet"
 STATS = Path("/data/atlas/lambert/processed/target_stats.json")
 
