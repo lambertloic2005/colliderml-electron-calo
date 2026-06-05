@@ -4,7 +4,7 @@
 # SLURM resource request
 # ============================================================
 
-#SBATCH --job-name=trainTestElectronDBSCAN
+#SBATCH --job-name=trainTestElectronKinematicsInference
 #SBATCH --output=%x.o%j
 #SBATCH --error=%x.e%j
 #SBATCH --time=24:00:00
@@ -30,38 +30,32 @@ echo "Submitted from: ${SLURM_SUBMIT_DIR}"
 echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-not set}"
 echo "========================================"
 
-# ============================================================
-# 1. Define important paths
-# ============================================================
-
-# Usually SLURM_SUBMIT_DIR is the folder where you ran sbatch.
+# folder where sbatch is run
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$HOME/colliderml-electron-calo}"
 
-# Safety fallback in case you submit from the wrong folder.
+# Safety fallback in case submitted from the wrong folder.
 if [[ ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
     PROJECT_DIR="$HOME/colliderml-electron-calo"
 fi
 
-# Name of your conda environment on Ruche.
+# Name of conda environment on Ruche.
 CONDA_ENV_NAME="colliderml-electron-calo"
 
 # Main DBSCAN parquet file.
-SOURCE_DBSCAN_FILE="$PROJECT_DIR/data/electrons/electrons_dbscan.parquet"
+SOURCE_DBSCAN_FILE="$PROJECT_DIR/data/electrons/zee_pu200_supervised_dbscan.parquet"
 
 # Target normalization file.
 SOURCE_STATS_FILE="$PROJECT_DIR/data/electrons/target_stats.json"
 
 # Final output folder for this specific job.
-RUN_DIR="$PROJECT_DIR/runs/ruche_eta_phi_pt_dbscan_${SLURM_JOB_ID}"
+RUN_DIR="$PROJECT_DIR/runs/ruche_eta_phi_pt__supervised_dbscan_${SLURM_JOB_ID}"
 
 mkdir -p "$RUN_DIR"
 
 echo "Project directory: $PROJECT_DIR"
 echo "Run output directory: $RUN_DIR"
 
-# ============================================================
-# 2. Check that required data files exist
-# ============================================================
+# Check that required data files exist
 
 if [[ ! -f "$SOURCE_DBSCAN_FILE" ]]; then
     echo "ERROR: Could not find DBSCAN parquet file:"
@@ -75,12 +69,9 @@ if [[ ! -f "$SOURCE_STATS_FILE" ]]; then
     exit 1
 fi
 
-# ============================================================
-# 3. Create a temporary working copy
-# ============================================================
+# Create a temporary working copy
 
-# The job runs in a temporary copy of the repo.
-# This avoids modifying your real repo and uses fast local storage.
+# The job runs in a temporary copy of the repo
 
 if [[ -n "${TMPDIR:-}" ]]; then
     WORKDIR="$TMPDIR/colliderml-electron-calo"
@@ -115,19 +106,16 @@ echo "Copying DBSCAN data and target stats..."
 rsync -av "$SOURCE_DBSCAN_FILE" "$WORKDIR/data/electrons/electrons_dbscan.parquet"
 rsync -av "$SOURCE_STATS_FILE" "$WORKDIR/data/electrons/target_stats.json"
 
-# Your training script expects data/electrons/electrons.parquet.
-# This link makes electrons.parquet point to electrons_dbscan.parquet.
+# Training script expects data/electrons/electrons.parquet.
 cd "$WORKDIR/data/electrons"
-ln -sf electrons_dbscan.parquet electrons.parquet
+ln -sf zee_pu200_supervised_dbscan.parquet electrons.parquet
 
 cd "$WORKDIR"
 
 echo "Data files available to the job:"
 ls -lh data/electrons/
 
-# ============================================================
-# 4. Copy outputs back when the job ends
-# ============================================================
+# Copy outputs back when the job ends
 
 sync_back() {
     exit_code=$?
@@ -215,9 +203,7 @@ export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 # Print Python output immediately into the log.
 export PYTHONUNBUFFERED=1
 
-# ============================================================
-# 6. Check GPU and code state
-# ============================================================
+# Check GPU and code state
 
 echo "Checking GPU:"
 nvidia-smi || true
@@ -254,9 +240,7 @@ ls -lh scripts/train_eta_phi_pt_angular_features.py
 echo "Testing script:"
 ls -lh scripts/test_eta_phi_pt_angular_features.py
 
-# ============================================================
-# 7. Train the model
-# ============================================================
+# Train the model
 
 echo "========================================"
 echo "START TRAINING"
@@ -273,11 +257,9 @@ echo "========================================"
 echo "Checkpoint files after training:"
 find checkpoints -maxdepth 2 -type f -print -exec ls -lh {} \; || true
 
-# ============================================================
-# 8. Make sure the trained checkpoint exists
-# ============================================================
+# Make sure the trained checkpoint exists
 
-EXPECTED_CKPT="checkpoints/eta_phi_pt_conv_dbscan_energy.pt"
+EXPECTED_CKPT="checkpoints/ruche_eta_phi_pt_supervised_dbscan.pt"
 
 if [[ ! -f "$EXPECTED_CKPT" ]]; then
     echo "ERROR: Expected checkpoint was not created:"
@@ -289,9 +271,8 @@ if [[ ! -f "$EXPECTED_CKPT" ]]; then
     exit 1
 fi
 
-# ============================================================
-# 9. Test the trained model
-# ============================================================
+
+# Test the trained model
 
 echo "========================================"
 echo "START TESTING"
@@ -308,9 +289,7 @@ echo "========================================"
 echo "Result files after testing:"
 find results -maxdepth 4 -type f -print -exec ls -lh {} \; || true
 
-# ============================================================
-# 10. End of job
-# ============================================================
+# End of job
 
 echo "========================================"
 echo "SUCCESS"
