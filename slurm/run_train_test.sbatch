@@ -17,8 +17,8 @@
 #SBATCH --exclude=ruche-gpu16
 #SBATCH --tmp=120G
 
-# Stop the script if something fails, if a variable is missing,
-# or if part of a command pipeline fails.
+# Stop if something fails, if a variable is missing,
+# or if part of a pipeline fails.
 set -euo pipefail
 
 echo "========================================"
@@ -30,12 +30,10 @@ echo "Submitted from: ${SLURM_SUBMIT_DIR}"
 echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-not set}"
 echo "========================================"
 
-
 # ============================================================
 # 1. Define important paths
 # ============================================================
 
-# This should be your repo folder.
 # Usually SLURM_SUBMIT_DIR is the folder where you ran sbatch.
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$HOME/colliderml-electron-calo}"
 
@@ -61,7 +59,6 @@ mkdir -p "$RUN_DIR"
 echo "Project directory: $PROJECT_DIR"
 echo "Run output directory: $RUN_DIR"
 
-
 # ============================================================
 # 2. Check that required data files exist
 # ============================================================
@@ -78,12 +75,12 @@ if [[ ! -f "$SOURCE_STATS_FILE" ]]; then
     exit 1
 fi
 
-
 # ============================================================
 # 3. Create a temporary working copy
 # ============================================================
+
 # The job runs in a temporary copy of the repo.
-# This avoids modifying your real repo and lets us use fast local storage.
+# This avoids modifying your real repo and uses fast local storage.
 
 if [[ -n "${TMPDIR:-}" ]]; then
     WORKDIR="$TMPDIR/colliderml-electron-calo"
@@ -92,6 +89,7 @@ else
 fi
 
 echo "Temporary work directory: $WORKDIR"
+
 mkdir -p "$WORKDIR"
 
 echo "Copying repo code to temporary work directory..."
@@ -113,10 +111,11 @@ rsync -a --delete \
 mkdir -p "$WORKDIR/data/electrons"
 
 echo "Copying DBSCAN data and target stats..."
+
 rsync -av "$SOURCE_DBSCAN_FILE" "$WORKDIR/data/electrons/electrons_dbscan.parquet"
 rsync -av "$SOURCE_STATS_FILE" "$WORKDIR/data/electrons/target_stats.json"
 
-# Your current training script expects data/electrons/electrons.parquet.
+# Your training script expects data/electrons/electrons.parquet.
 # This link makes electrons.parquet point to electrons_dbscan.parquet.
 cd "$WORKDIR/data/electrons"
 ln -sf electrons_dbscan.parquet electrons.parquet
@@ -126,12 +125,9 @@ cd "$WORKDIR"
 echo "Data files available to the job:"
 ls -lh data/electrons/
 
-
 # ============================================================
 # 4. Copy outputs back when the job ends
 # ============================================================
-# This function runs automatically at the end, even if training crashes.
-# It saves logs, checkpoints, plots, metrics, and W&B files.
 
 sync_back() {
     exit_code=$?
@@ -181,7 +177,6 @@ sync_back() {
 
 trap sync_back EXIT
 
-
 # ============================================================
 # 5. Load Python environment
 # ============================================================
@@ -189,7 +184,11 @@ trap sync_back EXIT
 module purge
 module load anaconda3/2023.09-0/none-none
 
+# Conda activation can sometimes reference unset variables,
+# so temporarily disable strict unset-variable checking.
+set +u
 source activate "$CONDA_ENV_NAME"
+set -u
 
 echo "Python executable:"
 which python
@@ -198,23 +197,23 @@ echo "Python version:"
 python --version
 
 # Install the repo package from this temporary copy.
-# --no-deps avoids reinstalling dependencies.
+# --no-deps avoids reinstalling dependencies every job.
 python -m pip install -e . --no-deps
 
 # Use non-interactive plotting for saved figures.
 export MPLBACKEND=Agg
 
 # Offline W&B means logs are saved locally.
-# Change to online if you already ran wandb login on Ruche.
+# Change to online if you already ran: wandb login
 export WANDB_MODE=offline
 
 # Match CPU thread usage to the CPUs requested from SLURM.
 export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 export MKL_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
+export OPENBLAS_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 
 # Print Python output immediately into the log.
 export PYTHONUNBUFFERED=1
-
 
 # ============================================================
 # 6. Check GPU and code state
@@ -226,8 +225,10 @@ nvidia-smi || true
 echo "Checking PyTorch CUDA:"
 python - <<'PY'
 import torch
+
 print("torch version:", torch.__version__)
 print("cuda available:", torch.cuda.is_available())
+
 if torch.cuda.is_available():
     print("gpu:", torch.cuda.get_device_name(0))
 PY
@@ -240,6 +241,7 @@ if [[ -d "$PROJECT_DIR/.git" ]]; then
     cd "$PROJECT_DIR"
     echo "Branch:"
     git branch --show-current || true
+
     echo "Latest commit:"
     git log -1 --oneline || true
 fi
@@ -251,7 +253,6 @@ ls -lh scripts/train_eta_phi_pt_angular_features.py
 
 echo "Testing script:"
 ls -lh scripts/test_eta_phi_pt_angular_features.py
-
 
 # ============================================================
 # 7. Train the model
@@ -272,7 +273,6 @@ echo "========================================"
 echo "Checkpoint files after training:"
 find checkpoints -maxdepth 2 -type f -print -exec ls -lh {} \; || true
 
-
 # ============================================================
 # 8. Make sure the trained checkpoint exists
 # ============================================================
@@ -282,11 +282,12 @@ EXPECTED_CKPT="checkpoints/eta_phi_pt_conv_dbscan_energy.pt"
 if [[ ! -f "$EXPECTED_CKPT" ]]; then
     echo "ERROR: Expected checkpoint was not created:"
     echo "$EXPECTED_CKPT"
+
     echo "Available checkpoints:"
     find checkpoints -type f || true
+
     exit 1
 fi
-
 
 # ============================================================
 # 9. Test the trained model
@@ -306,7 +307,6 @@ echo "========================================"
 
 echo "Result files after testing:"
 find results -maxdepth 4 -type f -print -exec ls -lh {} \; || true
-
 
 # ============================================================
 # 10. End of job
