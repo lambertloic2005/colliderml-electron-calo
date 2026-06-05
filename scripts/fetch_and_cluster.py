@@ -53,6 +53,7 @@ Cache layout (what build_electron_table globs):
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import sys
 import time
@@ -252,20 +253,15 @@ def stage_process(args) -> None:
         mask_kind=args.mask_kind,    # "dbscan" (supervised clean) or "cone"
         eps=args.eps,                # DBSCAN neighbourhood radius (dR units)
         min_samples=args.min_samples,
+        task_id=args.task_id,        # SLURM array slicing
+        n_tasks=args.n_tasks,        # SLURM array slicing
         out_path=str(out),
     )
 
 
-def stage_stats(args) -> None:
-    """Assign event-level train/val/test splits in the electron parquet, then
-    write target_stats.json (mean/std of each target column over the TRAIN split).
-    This is what ElectronDataset / the training+test scripts consume."""
-    try:
-        from colliderml_electron.splits import assign_splits, compute_target_stats
-    except ModuleNotFoundError as exc:
-        sys.exit(f"ERROR: cannot import colliderml_electron.splits ({exc}). "
-                 f"Run `pip install -e .` in the repo root first.")
-
+def _splits_and_stats(parquet: Path, args) -> None:
+    """Assign event-level splits in `parquet` (in place) and write target_stats.json."""
+    from colliderml_electron.splits import assign_splits, compute_target_stats
     # Keep target columns in lock-step with the dataset; fall back if torch
     # (a dataset.py import) isn't available in this environment.
     try:
@@ -273,28 +269,61 @@ def stage_stats(args) -> None:
     except Exception:
         TARGET_COLS = DEFAULT_TARGET_COLS
 
-    parquet = Path(args.out)
-    if not parquet.exists():
-        sys.exit(f"ERROR: {parquet} not found. Run the process stage first "
-                 f"(it writes the electron parquet that splits/stats operate on).")
-
     stats_out = Path(args.target_stats_out) if args.target_stats_out else parquet.with_name("target_stats.json")
     stats_out.parent.mkdir(parents=True, exist_ok=True)
 
-    # assign_splits rewrites the parquet in place, adding/overwriting a "split"
-    # column at the EVENT level (all electrons of an event share a split), so
-    # cells from one event never leak across train/val/test.
+    # assign_splits rewrites the parquet in place, adding a "split" column at the
+    # EVENT level (all electrons of an event share a split), so cells from one
+    # event never leak across train/val/test.
     print(f"Assigning {args.train_frac:.0%}/{args.val_frac:.0%}/"
           f"{1 - args.train_frac - args.val_frac:.0%} splits (seed={args.split_seed}) in {parquet}")
-    assign_splits(
-        parquet,
-        train_frac=args.train_frac,
-        val_frac=args.val_frac,
-        seed=args.split_seed,
-    )
-
+    assign_splits(parquet, train_frac=args.train_frac, val_frac=args.val_frac, seed=args.split_seed)
     print(f"Computing target stats over the train split -> {stats_out}")
     compute_target_stats(parquet, TARGET_COLS, out_path=str(stats_out))
+
+
+def stage_stats(args) -> None:
+    """Splits + target_stats.json for a single processed parquet (--out)."""
+    try:
+        import colliderml_electron.splits  # noqa: F401  (clear error if not installed)
+    except ModuleNotFoundError as exc:
+        sys.exit(f"ERROR: cannot import colliderml_electron ({exc}). "
+                 f"Run `pip install -e .` in the repo root first.")
+    parquet = Path(args.out)
+    if not parquet.exists():
+        sys.exit(f"ERROR: {parquet} not found. Run the process stage first.")
+    _splits_and_stats(parquet, args)
+
+
+def stage_merge(args) -> None:
+    """Concatenate the per-task part files from a SLURM array into one parquet,
+    then assign splits and write target_stats.json. The split is done here, on the
+    full merged set, so train/val/test are globally consistent across all tasks."""
+    import polars as pl
+    try:
+        import colliderml_electron.splits  # noqa: F401
+    except ModuleNotFoundError as exc:
+        sys.exit(f"ERROR: cannot import colliderml_electron ({exc}). "
+                 f"Run `pip install -e .` in the repo root first.")
+
+    parts = sorted(glob.glob(args.parts_glob))
+    if not parts:
+        sys.exit(f"ERROR: no part files matched {args.parts_glob!r}.")
+    frames = []
+    for p in parts:
+        d = pl.read_parquet(p)
+        if d.height:
+            frames.append(d)
+    if not frames:
+        sys.exit("ERROR: all matched part files were empty.")
+
+    merged = pl.concat(frames, how="vertical")
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    merged.write_parquet(out)
+    print(f"Merged {len(frames)}/{len(parts)} non-empty part files "
+          f"({merged.height} electrons) -> {out}")
+    _splits_and_stats(out, args)
 
 
 # --------------------------------------------------------------------------- #
@@ -350,8 +379,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Size-capped ColliderML download + supervised per-electron DBSCAN processing.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("--stage", choices=["all", "download", "process", "stats"], default="all",
-                   help="'all' runs download -> process -> stats.")
+    p.add_argument("--stage", choices=["all", "download", "process", "stats", "merge"], default="all",
+                   help="'all' runs download -> process -> stats. 'merge' combines "
+                        "SLURM-array part files (--parts-glob) into one parquet + stats.")
 
     # dataset selection
     p.add_argument("--channel", default="zee")
@@ -386,7 +416,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dR-max", type=float, default=0.1,
                    help="Cone radius around the truth direction (used when --mask-kind cone).")
 
-    # split + target-stats (stats stage)
+    # parallel processing (SLURM job array)
+    p.add_argument("--task-id", type=int, default=0,
+                   help="This array task's index (set to $SLURM_ARRAY_TASK_ID).")
+    p.add_argument("--n-tasks", type=int, default=1,
+                   help="Total number of array tasks; each processes shards[task_id::n_tasks].")
+    p.add_argument("--parts-glob", default=None,
+                   help="For --stage merge: glob of per-task part parquets to concatenate, "
+                        "e.g. '/path/parts/part_*.parquet'.")
+
+    # split + target-stats (stats / merge stages)
     p.add_argument("--train-frac", type=float, default=0.70,
                    help="Event-level train fraction for the split assignment.")
     p.add_argument("--val-frac", type=float, default=0.15,
@@ -410,6 +449,10 @@ def main() -> None:
     args = build_parser().parse_args()
     if args.cap_gb is not None and args.cap_gb <= 0:
         args.cap_gb = None  # no cap
+
+    if args.stage == "merge":
+        stage_merge(args)
+        return
 
     if args.stage in ("all", "download"):
         stage_download(args)

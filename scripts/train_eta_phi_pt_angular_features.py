@@ -245,7 +245,7 @@ def main():
         "log_freq_batches": 10,
         "watch_gradients": False,
 
-        "model_type": "conv",     # "concat" reproduces your current baseline
+        "model_type": "conv",
         "conv_dim": 128,
         "kernel_size": 5,
 

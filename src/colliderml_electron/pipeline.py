@@ -139,6 +139,8 @@ def build_electron_table(
     mask_kind: str = "dbscan",        # add
     eps: float = 0.08,              # add
     min_samples: int = 2,           # add
+    task_id: int = 0,               # SLURM array slicing: this task's index
+    n_tasks: int = 1,               # SLURM array slicing: total number of tasks
     out_path: str | Path = "data/electrons/electrons.parquet",
 ) -> pl.DataFrame:
     home = os.path.expanduser("~")
@@ -153,10 +155,18 @@ def build_electron_table(
     if not common:
         raise RuntimeError(f"no matched shards. Found {len(p_by_idx)} particles, {len(c_by_idx)} calo_hits.")
 
+    n_total = len(common)
+    if n_tasks > 1:
+        common = common[task_id::n_tasks]   # strided -> disjoint, load-balanced subsets
+
     print(
-        f"Found {len(common)} matched shards "
-        f"(of {len(p_by_idx)} particles / {len(c_by_idx)} calo_hits total)"
+        f"Found {n_total} matched shards "
+        f"(of {len(p_by_idx)} particles / {len(c_by_idx)} calo_hits total); "
+        f"task {task_id}/{n_tasks} will process {len(common)}."
     )
+    if not common:
+        print("This task has no shards assigned; exiting without writing.")
+        return pl.DataFrame()
 
     rows: list[dict] = []
     skipped = 0
@@ -213,6 +223,9 @@ def build_electron_table(
     df = pl.DataFrame(rows)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    if df.height == 0:
+        print(f"\nNo electrons produced for this task; not writing {out_path}.")
+        return df
     df.write_parquet(out_path)
     print(
         f"\nWrote {len(df)} electrons from {events_done} events "
