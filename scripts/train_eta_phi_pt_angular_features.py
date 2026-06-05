@@ -233,7 +233,7 @@ def main():
         "output_dim": 4,
 
         "batch_size": 64,
-        "n_epochs": 60,
+        "n_epochs": 1,
         "learning_rate": 3e-4,
         "weight_decay": 1e-4,
         "warmup_epochs": 3,

@@ -8,9 +8,9 @@
 #SBATCH --output=%x.o%j
 #SBATCH --error=%x.e%j
 #SBATCH --time=24:00:00
-#SBATCH --mem=60G
+#SBATCH --mem=40G
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=2
 #SBATCH --gres=gpu:1
 #SBATCH --partition=gpua100
 #SBATCH --export=ALL
@@ -39,7 +39,7 @@ if [[ ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
 fi
 
 # Name of conda environment on Ruche.
-CONDA_ENV_NAME="colliderml-electron-calo"
+CONDA_ENV_NAME="colliderml"
 
 # Main DBSCAN parquet file.
 SOURCE_DBSCAN_FILE="$PROJECT_DIR/data/electrons/zee_pu200_supervised_dbscan.parquet"
