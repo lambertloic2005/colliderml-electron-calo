@@ -31,11 +31,11 @@ echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-not set}"
 echo "========================================"
 
 # folder where sbatch is run
-PROJECT_DIR="${SLURM_SUBMIT_DIR:-$HOME/colliderml-electron-calo}"
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$WORKDIRl/colliderml-electron-calo}"
 
 # Safety fallback in case submitted from the wrong folder.
 if [[ ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
-    PROJECT_DIR="$HOME/colliderml-electron-calo"
+    PROJECT_DIR="$WORKDIR/colliderml-electron-calo"
 fi
 
 # Name of conda environment on Ruche.
@@ -48,7 +48,7 @@ SOURCE_DBSCAN_FILE="$PROJECT_DIR/data/electrons/zee_pu200_supervised_dbscan.parq
 SOURCE_STATS_FILE="$PROJECT_DIR/data/electrons/target_stats.json"
 
 # Final output folder for this specific job.
-RUN_DIR="$PROJECT_DIR/runs/ruche_eta_phi_pt__supervised_dbscan_${SLURM_JOB_ID}"
+RUN_DIR="$PROJECT_DIR/runs/ruche_eta_phi_pt_supervised_dbscan_${SLURM_JOB_ID}"
 
 mkdir -p "$RUN_DIR"
 
