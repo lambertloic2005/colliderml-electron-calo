@@ -31,7 +31,7 @@ echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-not set}"
 echo "========================================"
 
 # folder where sbatch is run
-PROJECT_DIR="${SLURM_SUBMIT_DIR:-$WORKDIRl/colliderml-electron-calo}"
+PROJECT_DIR="${SLURM_SUBMIT_DIR:-$WORKDIR/colliderml-electron-calo}"
 
 # Safety fallback in case submitted from the wrong folder.
 if [[ ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
