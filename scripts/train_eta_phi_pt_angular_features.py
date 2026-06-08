@@ -409,9 +409,9 @@ def main():
                 epochs_no_improve = 0
             else:
                 epochs_no_improve += 1
-            if epochs_no_improve >= 8:          # early stopping patience
-                print(f"early stop at epoch {epoch}")
-                break
+            # if epochs_no_improve >= 8:          # early stopping patience
+            #     print(f"early stop at epoch {epoch}")
+            #     break
             best_val_phi_loss = min(best_val_phi_loss, val_logs["loss_phi"])
             best_val_pt_rel_rmse = min(best_val_pt_rel_rmse, val_logs["pt_rel_rmse"])
 
