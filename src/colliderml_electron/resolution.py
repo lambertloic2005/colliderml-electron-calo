@@ -74,8 +74,14 @@ def gaussian_resolution(residuals, n_sigma: float = 3.0,
 
 def plot_residual_fit(residuals, name: str = "phi", unit: str = "rad",
                       wrap: bool = False, bins: int = 60, ax=None,
-                      n_sigma: float = 3.0):
+                      n_sigma: float = 3.0, view_sigma: float = 5.0):
     """Histogram of residuals with the fitted-Gaussian overlay annotated.
+
+    `view_sigma` restricts the plotted window (and the histogram binning) to
+    fit.mu +/- view_sigma * fit.sigma, so the fitted core fills the frame
+    instead of being squashed into a thin spike by far-out outliers. The fit
+    itself and the reported tail fraction still use ALL residuals -- only the
+    display is windowed. Set view_sigma=None to show the full range.
 
     Returns (FitResult, matplotlib axis).
     """
@@ -85,9 +91,17 @@ def plot_residual_fit(residuals, name: str = "phi", unit: str = "rad",
     r = wrap_angle(residuals) if wrap else np.asarray(residuals, dtype=float)
     r = r[np.isfinite(r)]
 
+    # display window: zoom to the core so the Gaussian shape is visible
+    hist_range = None
+    if view_sigma is not None and np.isfinite(fit.sigma) and fit.sigma > 0 and r.size:
+        lo = max(fit.mu - view_sigma * fit.sigma, float(r.min()))
+        hi = min(fit.mu + view_sigma * fit.sigma, float(r.max()))
+        if hi > lo:
+            hist_range = (lo, hi)
+
     if ax is None:
         _, ax = plt.subplots(figsize=(7, 5))
-    _, edges, _ = ax.hist(r, bins=bins, alpha=0.8)
+    _, edges, _ = ax.hist(r, bins=bins, range=hist_range, alpha=0.8)
     width = edges[1] - edges[0]
     xs = np.linspace(edges[0], edges[-1], 400)
     # Gaussian scaled to the core counts (n_core * bin_width)
@@ -100,6 +114,8 @@ def plot_residual_fit(residuals, name: str = "phi", unit: str = "rad",
     ax.set_title(f"Residuals: {name}")
     ax.set_xlabel(f"Prediction - truth for {name} [{unit}]")
     ax.set_ylabel("Count")
+    if hist_range is not None:
+        ax.set_xlim(*hist_range)
     ax.legend(loc="upper right", fontsize=9)
     return fit, ax
 
