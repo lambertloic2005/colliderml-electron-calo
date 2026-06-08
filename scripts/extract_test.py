@@ -1,7 +1,7 @@
 # extract_test.py
 import polars as pl
 
-df = pl.read_parquet("zee_pu200_supervised_dbscan.parquet")
+df = pl.read_parquet("data/electrons/zee_pu200_supervised_dbscan.parquet")
 test = df.filter(pl.col("split") == "test")
 
 print(f"test electrons: {test.height}")
