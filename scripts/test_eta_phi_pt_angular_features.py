@@ -118,7 +118,7 @@ def plot_expected_vs_predicted(true_values, pred_values, name, output_dir, unit=
     return path
 
 
-def plot_residuals(residuals, name, output_dir, unit="", wrap=False):
+def plot_residuals(residuals, name, output_dir, unit="", wrap=False, view_sigma=5.0):
     path = output_dir / f"residuals_{name}.png"
 
     fig, ax = plt.subplots(figsize=(7, 5))
@@ -130,6 +130,7 @@ def plot_residuals(residuals, name, output_dir, unit="", wrap=False):
         wrap=wrap,
         bins=60,
         ax=ax,
+        view_sigma=view_sigma,
     )
 
     fig.tight_layout()
@@ -144,10 +145,17 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-    checkpoint_path = Path("checkpoints/ruche/ruche_geometricLoss_wrappedPhi.pt")
+<<<<<<< HEAD
+    checkpoint_path = Path("checkpoints/ruche/ruche_eta_phi_pt_supervised_dbscan.pt")
     parquet_path = Path("data/electrons/testRuche/zee_pu200_supervised_dbscan_TEST.parquet")
     stats_path = Path("data/electrons/testRuche/target_stats.json")
-    output_dir = Path("results/ruche/geometricLoss_wrappedPhi")
+    output_dir = Path("results/first-full")
+=======
+    checkpoint_path = Path("checkpoints/ruche/ruche_eta_phi_pt_supervised_dbscan.pt")
+    parquet_path = Path("data/electrons/testRuche/zee_pu200_supervised_dbscan_TEST.parquet")
+    stats_path = Path("data/electrons/testRuche/target_stats.json")
+    output_dir = Path("results/first-full")
+>>>>>>> origin/fix-residual-fit
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
