@@ -125,8 +125,8 @@ class KinematicLoss(nn.Module):
         # target: [eta_norm, phi_norm, logpt_norm]  (gathered in this order)
         # phi_centroid: (B,) energy-weighted cluster phi anchor, in radians
         pred_eta_norm = pred[:, 0]
-        phi_cos, phi_sin = pred[:, 1], pred[:, 2]
-        pred_logpt_norm = pred[:, 3]
+        pred_delta = pred[:, 1]          # predicted Δφ offset from centroid, radians
+        pred_logpt_norm = pred[:, 2]
 
         target_eta_norm = target[:, 0]
         target_phi_norm = target[:, 1]
@@ -136,20 +136,20 @@ class KinematicLoss(nn.Module):
 
         target_phi = target_phi_norm * self.phi_std + self.phi_mean      # absolute radians
         delta_target = wrapped_angle_delta(target_phi, phi_centroid)     # residual, wrapped
-        cos_t, sin_t = torch.cos(delta_target), torch.sin(delta_target)
-        phi_loss = ((phi_cos - cos_t) ** 2 + (phi_sin - sin_t) ** 2).mean()
+        phi_loss = (wrapped_angle_delta(pred_delta, delta_target) ** 2).mean()
 
         logpt_loss = torch.mean((pred_logpt_norm - target_logpt_norm) ** 2)
 
+        eps = 1e-12
         w = self.eta_weight + self.phi_weight + self.logpt_weight
-        total_loss = (
-            self.eta_weight * eta_loss
-            + self.phi_weight * phi_loss
-            + self.logpt_weight * logpt_loss
+        log_total = (
+            self.eta_weight * torch.log(eta_loss + eps)
+            + self.phi_weight * torch.log(phi_loss + eps)
+            + self.logpt_weight * torch.log(logpt_loss + eps)
         ) / w
+        total_loss = torch.exp(log_total)
 
         # diagnostics: decode predicted delta, add the anchor back, compare to truth
-        pred_delta = torch.atan2(phi_sin, phi_cos)
         pred_phi = phi_centroid + pred_delta
         delta_phi = wrapped_angle_delta(pred_phi, target_phi)
         # residual in un-normalized ln(pT) ~ dpT/pT -> fractional pT resolution
@@ -230,7 +230,7 @@ def main():
         "n_layers": 3,
         "dim_feedforward": 256,
         "dropout": 0.1,
-        "output_dim": 4,
+        "output_dim": 3,
 
         "batch_size": 64,
         "n_epochs": 144,

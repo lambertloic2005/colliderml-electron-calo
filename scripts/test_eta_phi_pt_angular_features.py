@@ -192,9 +192,9 @@ def main():
 
     # ---- decode predictions ----
     pred_eta = pred_norm[:, 0] * eta_std + eta_mean
-    pred_delta = np.arctan2(pred_norm[:, 2], pred_norm[:, 1])    # cos/sin -> DELTA phi
+    pred_delta = pred_norm[:, 1]                                 # predicted Δφ offset, radians
     pred_phi = wrap_phi(phi_centroid + pred_delta)               # add anchor back
-    pred_logpt = pred_norm[:, 3] * logpt_std + logpt_mean
+    pred_logpt = pred_norm[:, 2] * logpt_std + logpt_mean
     pred_pt = np.exp(pred_logpt)                                  # GeV
 
     # ---- decode truth ----
