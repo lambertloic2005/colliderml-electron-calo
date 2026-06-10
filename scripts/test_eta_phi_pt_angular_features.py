@@ -68,31 +68,26 @@ def angular_residual(pred_phi: np.ndarray, true_phi: np.ndarray) -> np.ndarray:
 def collect_predictions(model, loader, device):
     model.eval()
 
-    preds = []
-    targets = []
-    centroids = []
+    preds, targets = [], []
+    phi_cents, eta_cents, log_sum_ets = [], [], []
 
     for batch in loader:
         batch = move_batch_to_device(batch, device)
 
-        pred = model(
-            batch["x_sampled"],
-            batch["x_high_level"],
-            batch["mask"],
-        )
-
-        # gathered in head-output order: [eta, phi, log_pt]
+        pred = model(batch["x_sampled"], batch["x_high_level"], batch["mask"])
         target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX]]
 
         preds.append(pred.cpu().numpy())
         targets.append(target.cpu().numpy())
-        centroids.append(batch["phi_centroid"].cpu().numpy())
+        phi_cents.append(batch["phi_centroid"].cpu().numpy())
+        eta_cents.append(batch["eta_centroid"].cpu().numpy())
+        log_sum_ets.append(batch["log_sum_et"].cpu().numpy())
 
-    preds = np.concatenate(preds, axis=0)
-    targets = np.concatenate(targets, axis=0)
-    centroids = np.concatenate(centroids, axis=0)
-
-    return preds, targets, centroids
+    return (
+        np.concatenate(preds), np.concatenate(targets),
+        np.concatenate(phi_cents), np.concatenate(eta_cents),
+        np.concatenate(log_sum_ets),
+    )
 
 
 def plot_expected_vs_predicted(true_values, pred_values, name, output_dir, unit=""):
@@ -145,17 +140,10 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-<<<<<<< HEAD
-    checkpoint_path = Path("checkpoints/ruche/ruche_eta_phi_pt_supervised_dbscan.pt")
+    checkpoint_path = Path("checkpoints/ruche/ruche_geometricLoss_wrappedPhi.pt")
     parquet_path = Path("data/electrons/testRuche/zee_pu200_supervised_dbscan_TEST.parquet")
     stats_path = Path("data/electrons/testRuche/target_stats.json")
-    output_dir = Path("results/first-full")
-=======
-    checkpoint_path = Path("checkpoints/ruche/ruche_eta_phi_pt_supervised_dbscan.pt")
-    parquet_path = Path("data/electrons/testRuche/zee_pu200_supervised_dbscan_TEST.parquet")
-    stats_path = Path("data/electrons/testRuche/target_stats.json")
-    output_dir = Path("results/first-full")
->>>>>>> origin/fix-residual-fit
+    output_dir = Path("results/ruche/geometricLoss_wrappedPhi")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -192,24 +180,30 @@ def main():
     model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
 
-    pred_norm, target_norm, phi_centroid = collect_predictions(model, test_loader, device)
+    (pred_norm, target_norm, phi_centroid,
+     eta_centroid, log_sum_et) = collect_predictions(model, test_loader, device)
 
     eta_mean, eta_std = stats["truth_eta"]["mean"], stats["truth_eta"]["std"]
     phi_mean, phi_std = stats["truth_phi"]["mean"], stats["truth_phi"]["std"]
     logpt_mean, logpt_std = stats["truth_log_pt"]["mean"], stats["truth_log_pt"]["std"]
 
     # ---- decode predictions ----
-    pred_eta = pred_norm[:, 0] * eta_std + eta_mean
+    pred_eta = eta_centroid + pred_norm[:, 0]                    # anchor + predicted Δη
     pred_delta = pred_norm[:, 1]                                 # predicted Δφ offset, radians
     pred_phi = wrap_phi(phi_centroid + pred_delta)               # add anchor back
-    pred_logpt = pred_norm[:, 2] * logpt_std + logpt_mean
+    pred_logpt = log_sum_et + pred_norm[:, 2]                    # anchor + predicted Δln pT
     pred_pt = np.exp(pred_logpt)                                  # GeV
 
     # ---- decode truth ----
     true_eta = target_norm[:, 0] * eta_std + eta_mean
     true_phi = wrap_phi(target_norm[:, 1] * phi_std + phi_mean)
     true_logpt = target_norm[:, 2] * logpt_std + logpt_mean
-    true_pt = np.exp(true_logpt)                                  # GeV
+    true_pt = np.exp(true_logpt)
+    # Anchor-only baselines: what you'd get with the model head outputting zero.
+    # The trained model must beat these, otherwise the head is learning nothing.
+    print(f"anchor-only eta  std: {np.std(eta_centroid - true_eta):.5f}")
+    print(f"anchor-only phi  std: {np.std(angular_residual(phi_centroid, true_phi)):.5f} rad")
+    print(f"anchor-only lnpt std: {np.std(log_sum_et - true_logpt):.5f}")                                  # GeV
 
     # ---- residuals ----
     eta_residual = pred_eta - true_eta
@@ -222,6 +216,28 @@ def main():
     PT_FLOOR_GEV = 5.0
     hi = true_pt >= PT_FLOOR_GEV
     pt_rel_hi = pt_rel_residual[hi]
+
+    # --- charge-split phi diagnostic: is the bimodal residual a charge effect? ---
+    import polars as pl
+    charge = (
+        pl.read_parquet(parquet_path, columns=["split", "truth_charge"])
+          .filter(pl.col("split") == "test")["truth_charge"]
+          .to_numpy()
+    )
+    assert len(charge) == len(phi_residual), "charge/residual length mismatch"
+    for q in (-1, +1):
+        sel = charge == q
+        print(f"phi residual (q={q:+d}): mean={phi_residual[sel].mean():+.5f} rad  "
+              f"std={phi_residual[sel].std():.5f} rad  n={int(sel.sum())}")
+    plt.figure(figsize=(7, 5))
+    qbins = np.linspace(-0.1, 0.1, 60)
+    plt.hist(phi_residual[charge == -1], bins=qbins, alpha=0.6, label="electron (q=-1)")
+    plt.hist(phi_residual[charge == +1], bins=qbins, alpha=0.6, label="positron (q=+1)")
+    plt.xlabel("Prediction - truth for phi [rad]"); plt.ylabel("Count"); plt.legend()
+    plt.title("Phi residual split by truth charge")
+    plt.tight_layout()
+    plt.savefig(output_dir / "residuals_phi_by_charge.png", dpi=150)
+    plt.close()
 
     metrics = {
         "test/eta_mae": float(np.mean(np.abs(eta_residual))),

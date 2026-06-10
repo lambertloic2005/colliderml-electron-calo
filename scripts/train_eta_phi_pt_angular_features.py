@@ -23,6 +23,7 @@ from pathlib import Path
 
 import torch
 from torch import nn
+import torch.nn.functional as F
 import wandb
 
 from colliderml_electron.dataset import make_loader, TARGET_COLS
@@ -100,6 +101,14 @@ class KinematicLoss(nn.Module):
         stats = json.loads(Path(target_stats_path).read_text())
 
         self.register_buffer(
+            "eta_mean",
+            torch.tensor(stats["truth_eta"]["mean"], dtype=torch.float32),
+        )
+        self.register_buffer(
+            "eta_std",
+            torch.tensor(stats["truth_eta"]["std"], dtype=torch.float32),
+        )
+        self.register_buffer(
             "phi_mean",
             torch.tensor(stats["truth_phi"]["mean"], dtype=torch.float32),
         )
@@ -120,25 +129,26 @@ class KinematicLoss(nn.Module):
         self.phi_weight = phi_weight
         self.logpt_weight = logpt_weight
 
-    def forward(self, pred, target, phi_centroid):
-        # pred:   [eta, phi_cos, phi_sin, log_pt]   (phi pair = cos/sin of DELTA phi)
-        # target: [eta_norm, phi_norm, logpt_norm]  (gathered in this order)
-        # phi_centroid: (B,) energy-weighted cluster phi anchor, in radians
-        pred_eta_norm = pred[:, 0]
-        pred_delta = pred[:, 1]          # predicted Δφ offset from centroid, radians
-        pred_logpt_norm = pred[:, 2]
+    def forward(self, pred, target, phi_centroid, eta_centroid, log_sum_et):
+        # pred:   [delta_eta, delta_phi, delta_logpt] -- raw residuals from anchors
+        # target: [eta_norm, phi_norm, logpt_norm]    (z-scored, gathered in this order)
+        # anchors: (B,) energy-weighted eta/phi centroids and log(sum E_T)
+        pred_deta = pred[:, 0]
+        pred_dphi = pred[:, 1]
+        pred_dlogpt = pred[:, 2]
 
-        target_eta_norm = target[:, 0]
-        target_phi_norm = target[:, 1]
-        target_logpt_norm = target[:, 2]
+        target_eta = target[:, 0] * self.eta_std + self.eta_mean
+        target_phi = target[:, 1] * self.phi_std + self.phi_mean
+        target_logpt = target[:, 2] * self.logpt_std + self.logpt_mean
 
-        eta_loss = torch.mean((pred_eta_norm - target_eta_norm) ** 2)
+        deta_target = target_eta - eta_centroid
+        dphi_target = wrapped_angle_delta(target_phi, phi_centroid)
+        dlogpt_target = target_logpt - log_sum_et
 
-        target_phi = target_phi_norm * self.phi_std + self.phi_mean      # absolute radians
-        delta_target = wrapped_angle_delta(target_phi, phi_centroid)     # residual, wrapped
-        phi_loss = (wrapped_angle_delta(pred_delta, delta_target) ** 2).mean()
-
-        logpt_loss = torch.mean((pred_logpt_norm - target_logpt_norm) ** 2)
+        eta_loss = F.huber_loss(pred_deta, deta_target, delta=0.1)
+        phi_err = wrapped_angle_delta(pred_dphi, dphi_target)
+        phi_loss = F.huber_loss(phi_err, torch.zeros_like(phi_err), delta=0.05)
+        logpt_loss = F.huber_loss(pred_dlogpt, dlogpt_target, delta=0.2)
 
         eps = 1e-12
         w = self.eta_weight + self.phi_weight + self.logpt_weight
@@ -149,11 +159,10 @@ class KinematicLoss(nn.Module):
         ) / w
         total_loss = torch.exp(log_total)
 
-        # diagnostics: decode predicted delta, add the anchor back, compare to truth
-        pred_phi = phi_centroid + pred_delta
+        # diagnostics: decode by adding the anchors back, compare to truth
+        pred_phi = phi_centroid + pred_dphi
         delta_phi = wrapped_angle_delta(pred_phi, target_phi)
-        # residual in un-normalized ln(pT) ~ dpT/pT -> fractional pT resolution
-        d_lnpt = (pred_logpt_norm - target_logpt_norm) * self.logpt_std
+        d_lnpt = pred_dlogpt - dlogpt_target          # = pred_logpt - true_logpt
 
         logs = {
             "loss_total": total_loss.detach(),
@@ -199,7 +208,10 @@ def evaluate(
 
         target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX]]
 
-        loss, logs = loss_fn(pred, target, batch["phi_centroid"])
+        loss, logs = loss_fn(
+            pred, target,
+            batch["phi_centroid"], batch["eta_centroid"], batch["log_sum_et"],
+        )
 
         for key in totals:
             totals[key] += logs[key].item()
@@ -215,7 +227,8 @@ def evaluate(
 def main():
     config = {
         "architecture": "concat_transformer_eta_phi_pt_angular_features",
-        "high_level_dim": 15,
+        "high_level_dim": 19,
+        "max_abs_eta": 3.5,
         "use_angular_features": True,
         "use_cluster_features": True,
         "dataset": "colliderml_release1_zee_prompt_electrons",
@@ -284,6 +297,7 @@ def main():
             shuffle=True,
             use_angular_features=cfg["use_angular_features"],
             use_cluster_features=cfg["use_cluster_features"],
+            max_abs_eta=cfg.get("max_abs_eta"),
         )
 
         val_loader = make_loader(
@@ -294,6 +308,7 @@ def main():
             shuffle=False,
             use_angular_features=cfg["use_angular_features"],
             use_cluster_features=cfg["use_cluster_features"],
+            max_abs_eta=cfg.get("max_abs_eta"),
         )
 
         common = dict(
@@ -361,7 +376,10 @@ def main():
 
                 target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX]]
 
-                loss, logs = loss_fn(pred, target, batch["phi_centroid"])
+                loss, logs = loss_fn(
+                    pred, target,
+                    batch["phi_centroid"], batch["eta_centroid"], batch["log_sum_et"],
+                )
 
                 optimizer.zero_grad()
                 loss.backward()

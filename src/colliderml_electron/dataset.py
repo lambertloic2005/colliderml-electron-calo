@@ -37,11 +37,18 @@ class ElectronDataset(Dataset):
         target_stats_path: str | Path | None = None,
         use_angular_features: bool = False,
         use_cluster_features: bool = False,
+        max_abs_eta: float | None = None,
     ):
         df = pl.read_parquet(parquet_path)
 
         if split is not None:
             df = df.filter(pl.col("split") == split)
+
+        if max_abs_eta is not None:
+            n_before = df.height
+            df = df.filter(pl.col("truth_eta").abs() <= max_abs_eta)
+            print(f"acceptance cut |truth_eta| <= {max_abs_eta}: "
+                  f"kept {df.height}/{n_before}")
 
         self.df = df
         self.use_angular_features = use_angular_features
@@ -68,14 +75,37 @@ class ElectronDataset(Dataset):
         e_cal = np.asarray(row["cell_e_calibrated"], dtype=np.float32)
         log_e = np.log(np.clip(e_cal, 1e-6, None))[:, None]
 
+        # --- energy-weighted anchors (over ALL cells, before any topk) ---
+        cell_phi_all = np.asarray(row["cell_phi"], dtype=np.float64)
+        cell_eta_all = np.asarray(row["cell_eta"], dtype=np.float64)
+        w = np.clip(e_cal.astype(np.float64), 1e-9, None)
+        phi_centroid = float(np.arctan2(
+            np.average(np.sin(cell_phi_all), weights=w),
+            np.average(np.cos(cell_phi_all), weights=w),
+        ))
+        eta_centroid = float(np.average(cell_eta_all, weights=w))
+
+        # --- canonical azimuthal frame: rotate event so the centroid sits at phi=0 ---
+        cos_o, sin_o = np.cos(phi_centroid), np.sin(phi_centroid)
+        x_rot = x_sampled[:, 0] * cos_o + x_sampled[:, 1] * sin_o
+        y_rot = -x_sampled[:, 0] * sin_o + x_sampled[:, 1] * cos_o
+        x_sampled = np.stack([x_rot, y_rot, x_sampled[:, 2]], axis=-1).astype(np.float32)
+
         det_oh = _one_hot_detector(np.asarray(row["cell_detector"]))
 
         if self.use_angular_features:
             cell_eta = np.asarray(row["cell_eta"], dtype=np.float32)[:, None]
-            cell_phi = np.asarray(row["cell_phi"], dtype=np.float32)
-
-            sin_phi = np.sin(cell_phi)[:, None].astype(np.float32)
-            cos_phi = np.cos(cell_phi)[:, None].astype(np.float32)
+            dphi_cell = np.arctan2(
+                np.sin(cell_phi_all - phi_centroid),
+                np.cos(cell_phi_all - phi_centroid),
+            )
+            sin_phi = np.sin(dphi_cell)[:, None].astype(np.float32)
+            cos_phi = np.cos(dphi_cell)[:, None].astype(np.float32)dphi_cell = np.arctan2(
+                np.sin(cell_phi_all - phi_centroid),
+                np.cos(cell_phi_all - phi_centroid),
+            )
+            sin_phi = np.sin(dphi_cell)[:, None].astype(np.float32)
+            cos_phi = np.cos(dphi_cell)[:, None].astype(np.float32)
 
             # theta / cos(theta) from the same xyz as x_sampled (coords.py convention)
             cx = x_sampled[:, 0]; cy = x_sampled[:, 1]; cz = x_sampled[:, 2]
@@ -100,27 +130,31 @@ class ElectronDataset(Dataset):
 
         # --- cluster-level scalars (over ALL cells, before any topk truncation),
         # broadcast to every cell. Appended at the END so x_high_level[..., 0]
-        # stays log_e (the topk energy score). phi_centroid is the residual-phi
-        # anchor and is always returned. ---
-        cell_phi_all = np.asarray(row["cell_phi"], dtype=np.float64)
-        w = np.clip(e_cal.astype(np.float64), 1e-9, None)
-        phi_centroid = float(
-            np.arctan2(
-                np.average(np.sin(cell_phi_all), weights=w),
-                np.average(np.cos(cell_phi_all), weights=w),
-            )
-        )
+        # stays log_e (the topk energy score). ---
+        sum_e = float(e_cal.sum())                       # total calibrated E [GeV]
+        cx = x_sampled[:, 0]; cy = x_sampled[:, 1]; cz = x_sampled[:, 2]
+        r3d = np.sqrt(cx * cx + cy * cy + cz * cz)
+        sin_theta = (np.hypot(cx, cy) / np.clip(r3d, 1e-9, None)).astype(np.float64)
+        sum_et = float((e_cal.astype(np.float64) * sin_theta).sum())  # transverse-E proxy
+        log_sum_et = float(np.log(max(sum_et, 1e-6)))
 
         if self.use_cluster_features:
-            sum_e = float(e_cal.sum())                       # total calibrated E [GeV]
-            cx = x_sampled[:, 0]; cy = x_sampled[:, 1]; cz = x_sampled[:, 2]
-            r3d = np.sqrt(cx * cx + cy * cy + cz * cz)
-            sin_theta = (np.hypot(cx, cy) / np.clip(r3d, 1e-9, None)).astype(np.float64)
-            sum_et = float((e_cal.astype(np.float64) * sin_theta).sum())  # transverse-E proxy
-
             n = x_high_level.shape[0]
+
+            # E-weighted shower-shape moments around the anchors; the sign of
+            # skew_phi tags the bremsstrahlung tail direction (i.e. the charge).
+            dphi_all = np.arctan2(np.sin(cell_phi_all - phi_centroid),
+                                  np.cos(cell_phi_all - phi_centroid))
+            deta_all = cell_eta_all - eta_centroid
+            wsum = float(w.sum())
+            std_phi = float(np.sqrt(max(np.sum(w * dphi_all**2) / wsum, 1e-12)))
+            skew_phi = float(np.sum(w * dphi_all**3) / wsum) / std_phi**3
+            std_eta = float(np.sqrt(max(np.sum(w * deta_all**2) / wsum, 1e-12)))
+            skew_eta = float(np.sum(w * deta_all**3) / wsum) / std_eta**3
+
             cluster_feats = np.array(
-                [np.log(max(sum_e, 1e-6)), np.log(max(sum_et, 1e-6)), np.log(max(n, 1))],
+                [np.log(max(sum_e, 1e-6)), np.log(max(sum_et, 1e-6)), np.log(max(n, 1)),
+                 std_phi, skew_phi, std_eta, skew_eta],
                 dtype=np.float32,
             )
             x_high_level = np.concatenate(
@@ -139,6 +173,8 @@ class ElectronDataset(Dataset):
             "target":       torch.from_numpy(target),
             "n_cells":      x_sampled.shape[0],
             "phi_centroid": torch.tensor(phi_centroid, dtype=torch.float32),
+            "eta_centroid": torch.tensor(eta_centroid, dtype=torch.float32),
+            "log_sum_et":   torch.tensor(log_sum_et, dtype=torch.float32),
         }
 
 
@@ -162,6 +198,8 @@ def collate_pad(batch: list[dict]) -> dict:
     mask         = torch.ones(B, L, dtype=torch.bool)  # True = padding
     target       = torch.zeros(B, T)
     phi_centroid = torch.zeros(B)
+    eta_centroid = torch.zeros(B)
+    log_sum_et   = torch.zeros(B)
 
     for i, item in enumerate(batch):
         n = item["n_cells"]
@@ -170,6 +208,8 @@ def collate_pad(batch: list[dict]) -> dict:
         mask[i, :n] = False
         target[i] = item["target"]
         phi_centroid[i] = item["phi_centroid"]
+        eta_centroid[i] = item["eta_centroid"]
+        log_sum_et[i]   = item["log_sum_et"]
 
     return {
         "x_sampled": x_sampled,
@@ -177,6 +217,8 @@ def collate_pad(batch: list[dict]) -> dict:
         "mask": mask,
         "target": target,
         "phi_centroid": phi_centroid,
+        "eta_centroid": eta_centroid,
+        "log_sum_et": log_sum_et,
     }
 
 
@@ -189,6 +231,7 @@ def make_loader(
     num_workers: int = 0,
     use_angular_features: bool = False,
     use_cluster_features: bool = False,
+    max_abs_eta: float | None = None,
 ) -> DataLoader:
     ds = ElectronDataset(
         parquet_path,
@@ -196,6 +239,7 @@ def make_loader(
         target_stats_path=target_stats_path,
         use_angular_features=use_angular_features,
         use_cluster_features=use_cluster_features,
+        max_abs_eta=max_abs_eta,
     )
 
     return DataLoader(
