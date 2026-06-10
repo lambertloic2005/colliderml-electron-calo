@@ -100,11 +100,6 @@ class ElectronDataset(Dataset):
                 np.cos(cell_phi_all - phi_centroid),
             )
             sin_phi = np.sin(dphi_cell)[:, None].astype(np.float32)
-            cos_phi = np.cos(dphi_cell)[:, None].astype(np.float32)dphi_cell = np.arctan2(
-                np.sin(cell_phi_all - phi_centroid),
-                np.cos(cell_phi_all - phi_centroid),
-            )
-            sin_phi = np.sin(dphi_cell)[:, None].astype(np.float32)
             cos_phi = np.cos(dphi_cell)[:, None].astype(np.float32)
 
             # theta / cos(theta) from the same xyz as x_sampled (coords.py convention)

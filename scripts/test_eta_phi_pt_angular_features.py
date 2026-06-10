@@ -163,6 +163,7 @@ def main():
         shuffle=False,
         use_angular_features=True,
         use_cluster_features=config.get("use_cluster_features", False),
+        max_abs_eta=config.get("max_abs_eta"),
     )
 
     common = dict(
@@ -219,11 +220,13 @@ def main():
 
     # --- charge-split phi diagnostic: is the bimodal residual a charge effect? ---
     import polars as pl
-    charge = (
-        pl.read_parquet(parquet_path, columns=["split", "truth_charge"])
-          .filter(pl.col("split") == "test")["truth_charge"]
-          .to_numpy()
+    charge_df = (
+        pl.read_parquet(parquet_path, columns=["split", "truth_charge", "truth_eta"])
+          .filter(pl.col("split") == "test")
     )
+    if config.get("max_abs_eta") is not None:
+        charge_df = charge_df.filter(pl.col("truth_eta").abs() <= config["max_abs_eta"])
+    charge = charge_df["truth_charge"].to_numpy()
     assert len(charge) == len(phi_residual), "charge/residual length mismatch"
     for q in (-1, +1):
         sel = charge == q
