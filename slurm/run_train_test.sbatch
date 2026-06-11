@@ -7,7 +7,7 @@
 #SBATCH --job-name=trainTestElectronKinematicsInference
 #SBATCH --output=%x.o%j
 #SBATCH --error=%x.e%j
-#SBATCH --time=3:00:00
+#SBATCH --time=4:00:00
 #SBATCH --mem=40G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
