@@ -228,7 +228,7 @@ def main():
     config = {
         "architecture": "concat_transformer_eta_phi_pt_angular_features",
         "high_level_dim": 19,
-        "max_abs_eta": 3.2,
+        "max_abs_eta": 3,
         "use_angular_features": True,
         "use_cluster_features": True,
         "dataset": "colliderml_release1_zee_prompt_electrons",
