@@ -140,10 +140,10 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-    checkpoint_path = Path("checkpoints/ruche/ruche_geometricLoss_wrappedPhi.pt")
+    checkpoint_path = Path("checkpoints/ruche/ruche_huber_rotated_skew.pt")
     parquet_path = Path("data/electrons/testRuche/zee_pu200_supervised_dbscan_TEST.parquet")
     stats_path = Path("data/electrons/testRuche/target_stats.json")
-    output_dir = Path("results/ruche/geometricLoss_wrappedPhi")
+    output_dir = Path("results/ruche/huber_rotated_skew")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -204,7 +204,7 @@ def main():
     # The trained model must beat these, otherwise the head is learning nothing.
     print(f"anchor-only eta  std: {np.std(eta_centroid - true_eta):.5f}")
     print(f"anchor-only phi  std: {np.std(angular_residual(phi_centroid, true_phi)):.5f} rad")
-    print(f"anchor-only lnpt std: {np.std(log_sum_et - true_logpt):.5f}")                                  # GeV
+    print(f"anchor-only lnpt std: {np.std(log_sum_et - true_logpt):.5f}")                               
 
     # ---- residuals ----
     eta_residual = pred_eta - true_eta
@@ -218,7 +218,6 @@ def main():
     hi = true_pt >= PT_FLOOR_GEV
     pt_rel_hi = pt_rel_residual[hi]
 
-    # --- charge-split phi diagnostic: is the bimodal residual a charge effect? ---
     import polars as pl
     charge_df = (
         pl.read_parquet(parquet_path, columns=["split", "truth_charge", "truth_eta"])
