@@ -41,6 +41,7 @@ def truth_kinematics(electron: dict) -> dict:
         "truth_eta": float(eta),
         "truth_phi": float(phi),
         "truth_charge": charge,
+        "truth_z0": float(electron["vz"]),
     }
 
 def build_electron_row(

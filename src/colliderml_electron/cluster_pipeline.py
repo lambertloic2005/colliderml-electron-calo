@@ -39,6 +39,7 @@ _NULL_TRUTH = {
     "truth_energy": None, "truth_px": None, "truth_py": None, "truth_pz": None,
     "truth_p": None, "truth_pt": None, "truth_log_pt": None,
     "truth_eta": None, "truth_phi": None, "truth_charge": None,
+    "truth_z0": None,
 }
 
 
