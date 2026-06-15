@@ -234,10 +234,10 @@ fi
 cd "$WORKDIR"
 
 echo "Training script:"
-ls -lh scripts/train_eta_phi_pt_angular_features.py
+ls -lh scripts/train_eta_phi_pt_z0_charge.py
 
 echo "Testing script:"
-ls -lh scripts/test_eta_phi_pt_angular_features.py
+ls -lh scripts/test_eta_phi_pt_z0_charge.py
 
 # Train the model
 
@@ -246,7 +246,7 @@ echo "START TRAINING"
 echo "Date: $(date)"
 echo "========================================"
 
-python -u scripts/train_eta_phi_pt_angular_features.py 2>&1 | tee train.log
+python -u scripts/train_eta_phi_pt_z0_charge.py 2>&1 | tee train.log
 
 echo "========================================"
 echo "TRAINING FINISHED"
@@ -270,6 +270,13 @@ if [[ ! -f "$EXPECTED_CKPT" ]]; then
     exit 1
 fi
 
+# Make paths expected by the z0/charge test script
+mkdir -p checkpoints/ruche
+mkdir -p data/electrons/testRuche
+
+cp "$EXPECTED_CKPT" checkpoints/ruche/ruche_Jun15_3etaLim.pt
+cp data/electrons/electrons_dbscan.parquet data/electrons/testRuche/zee_pu200_supervised_dbscan_TEST.parquet
+cp data/electrons/target_stats.json data/electrons/testRuche/target_stats.json
 
 # Test the trained model
 
@@ -278,7 +285,7 @@ echo "START TESTING"
 echo "Date: $(date)"
 echo "========================================"
 
-python -u scripts/test_eta_phi_pt_angular_features.py 2>&1 | tee test.log
+python -u scripts/test_eta_phi_pt_z0_charge.py 2>&1 | tee test.log
 
 echo "========================================"
 echo "TESTING FINISHED"
