@@ -170,6 +170,7 @@ class ElectronDataset(Dataset):
             "phi_centroid": torch.tensor(phi_centroid, dtype=torch.float32),
             "eta_centroid": torch.tensor(eta_centroid, dtype=torch.float32),
             "log_sum_et":   torch.tensor(log_sum_et, dtype=torch.float32),
+            "truth_charge": torch.tensor(float(row["truth_charge"]), dtype=torch.float32),
         }
 
 
@@ -195,6 +196,7 @@ def collate_pad(batch: list[dict]) -> dict:
     phi_centroid = torch.zeros(B)
     eta_centroid = torch.zeros(B)
     log_sum_et   = torch.zeros(B)
+    truth_charge = torch.zeros(B)
 
     for i, item in enumerate(batch):
         n = item["n_cells"]
@@ -205,7 +207,7 @@ def collate_pad(batch: list[dict]) -> dict:
         phi_centroid[i] = item["phi_centroid"]
         eta_centroid[i] = item["eta_centroid"]
         log_sum_et[i]   = item["log_sum_et"]
-
+        truth_charge[i] = item["truth_charge"]
     return {
         "x_sampled": x_sampled,
         "x_high_level": x_high_level,
@@ -214,6 +216,7 @@ def collate_pad(batch: list[dict]) -> dict:
         "phi_centroid": phi_centroid,
         "eta_centroid": eta_centroid,
         "log_sum_et": log_sum_et,
+        "truth_charge": truth_charge,
     }
 
 
