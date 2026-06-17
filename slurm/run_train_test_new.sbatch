@@ -34,7 +34,7 @@ echo "========================================"
 
 CONDA_ENV_NAME="colliderml"
 
-RUN_NAME="eta_phi_pt_z0_charge_supervised_dbscan"
+RUN_NAME="eta_phi_pt_z0_charge"
 
 TRAIN_SCRIPT="scripts/train_eta_phi_pt_z0_charge.py"
 TEST_SCRIPT="scripts/test_eta_phi_pt_z0_charge.py"
@@ -47,15 +47,15 @@ if [[ ! -f "$PROJECT_DIR/pyproject.toml" ]]; then
     PROJECT_DIR="$HOME/colliderml-electron-calo"
 fi
 
-SOURCE_DBSCAN_FILE="$PROJECT_DIR/data/electrons/zee_pu200_supervised_dbscan.parquet"
-SOURCE_STATS_FILE="$PROJECT_DIR/data/electrons/target_stats.json"
+SOURCE_Z0_CHARGE_FILE="$PROJECT_DIR/data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet"
+SOURCE_STATS_FILE="$PROJECT_DIR/data/electrons/eta_phi_pt_z0_charge/target_stats.json"
 
 RUN_DIR="$PROJECT_DIR/runs/ruche_${RUN_NAME}_${SLURM_JOB_ID}"
 
 EXPECTED_CKPT="checkpoints/ruche_eta_phi_pt_z0_charge.pt"
 
 TEST_CKPT="checkpoints/ruche/ruche_eta_phi_pt_z0_charge.pt"
-TEST_PARQUET="data/electrons/testRuche/zee_pu200_supervised_dbscan_z0_charge_TEST.parquet"
+TEST_PARQUET="data/electrons/testRuche/zee_pu200_z0_charge_TEST.parquet"
 TEST_STATS="data/electrons/testRuche/target_stats.json"
 TEST_OUTPUT_DIR="results/ruche/${RUN_NAME}"
 
@@ -80,9 +80,9 @@ if [[ ! -f "$PROJECT_DIR/$TEST_SCRIPT" ]]; then
     exit 1
 fi
 
-if [[ ! -f "$SOURCE_DBSCAN_FILE" ]]; then
-    echo "ERROR: Could not find DBSCAN parquet file:"
-    echo "$SOURCE_DBSCAN_FILE"
+if [[ ! -f "$SOURCE_Z0_CHARGE_FILE" ]]; then
+    echo "ERROR: Could not find z0/charge parquet file:"
+    echo "$SOURCE_Z0_CHARGE_FILE"
     exit 1
 fi
 
@@ -118,19 +118,19 @@ rsync -a --delete \
     --exclude "checkpoints" \
     --exclude "notebooks" \
     --exclude "tests" \
-    --exclude "data/electrons/*.parquet" \
+    --exclude "data/electrons/" \
     "$PROJECT_DIR/" "$JOB_WORKDIR/"
 
 mkdir -p "$JOB_WORKDIR/data/electrons"
 
-echo "Copying DBSCAN data and target stats..."
-rsync -av "$SOURCE_DBSCAN_FILE" "$JOB_WORKDIR/data/electrons/electrons_dbscan.parquet"
+echo "Copying z0/charge data and target stats..."
+rsync -av "$SOURCE_Z0_CHARGE_FILE" "$JOB_WORKDIR/data/electrons/electrons_z0_charge.parquet"
 rsync -av "$SOURCE_STATS_FILE" "$JOB_WORKDIR/data/electrons/target_stats.json"
 
 # The training script currently expects:
 #   data/electrons/electrons.parquet
 cd "$JOB_WORKDIR/data/electrons"
-ln -sf electrons_dbscan.parquet electrons.parquet
+ln -sf electrons_z0_charge.parquet electrons.parquet
 cd "$JOB_WORKDIR"
 
 echo "Data files available to the job:"
@@ -281,11 +281,17 @@ stats_path = Path("data/electrons/target_stats.json")
 
 required_columns = {
     "split",
+
+    "truth_energy",
+    "truth_px",
+    "truth_py",
+    "truth_pz",
     "truth_eta",
     "truth_phi",
     "truth_log_pt",
     "truth_z0",
     "truth_charge",
+
     "cell_x",
     "cell_y",
     "cell_z",
@@ -296,6 +302,10 @@ required_columns = {
 }
 
 required_stats = {
+    "truth_energy",
+    "truth_px",
+    "truth_py",
+    "truth_pz",
     "truth_eta",
     "truth_phi",
     "truth_log_pt",
@@ -313,7 +323,24 @@ if missing_columns:
     )
 
 stats = json.loads(stats_path.read_text())
+
 missing_stats = sorted(required_stats - set(stats))
+if missing_stats:
+    raise RuntimeError(
+        "target_stats.json is missing required target stats: "
+        + ", ".join(missing_stats)
+    )
+
+bad_stats = sorted(
+    key for key in required_stats
+    if key in stats and ("mean" not in stats[key] or "std" not in stats[key])
+)
+
+if bad_stats:
+    raise RuntimeError(
+        "These target_stats entries are missing mean/std: "
+        + ", ".join(bad_stats)
+    )
 
 if missing_stats:
     raise RuntimeError(
@@ -369,13 +396,14 @@ mkdir -p checkpoints/ruche
 mkdir -p data/electrons/testRuche
 
 cp "$EXPECTED_CKPT" "$TEST_CKPT"
-cp data/electrons/electrons_dbscan.parquet "$TEST_PARQUET"
+cp data/electrons/electrons_z0_charge.parquet "$TEST_PARQUET"
 cp data/electrons/target_stats.json "$TEST_STATS"
 
 # The current test script hardcodes older Ruche paths.
 # Patch only the temporary working copy so this run uses proper z0/charge names.
 export TEST_CKPT
 export TEST_PARQUET
+export TEST_STATS
 export TEST_OUTPUT_DIR
 
 python - <<'PY'
@@ -389,17 +417,32 @@ replacements = {
     'checkpoint_path = Path("checkpoints/ruche/ruche_Jun15_3etaLim.pt")':
         f'checkpoint_path = Path("{os.environ["TEST_CKPT"]}")',
 
-    'parquet_path = Path("data/electrons/testRuche/zee_pu200_supervised_dbscan_TEST.parquet")':
+    'parquet_path = Path("data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge_TEST.parquet")':
         f'parquet_path = Path("{os.environ["TEST_PARQUET"]}")',
+
+    'stats_path = Path("data/electrons/eta_phi_pt_z0_charge/target_stats.json")':
+        f'stats_path = Path("{os.environ["TEST_STATS"]}")',
 
     'output_dir = Path("results/ruche/Jun15_3etaLim")':
         f'output_dir = Path("{os.environ["TEST_OUTPUT_DIR"]}")',
 }
 
 for old, new in replacements.items():
-    if old not in text:
-        raise RuntimeError(f"Could not find expected line in test script: {old}")
-    text = text.replace(old, new)
+    if old in text:
+        text = text.replace(old, new)
+
+if os.environ["TEST_CKPT"] not in text:
+    raise RuntimeError("Test script checkpoint path was not patched.")
+
+if os.environ["TEST_PARQUET"] not in text:
+    raise RuntimeError("Test script parquet path was not patched.")
+
+if os.environ["TEST_OUTPUT_DIR"] not in text:
+    raise RuntimeError("Test script output directory was not patched.")
+
+if os.environ["TEST_STATS"] not in text:
+    raise RuntimeError("Test script stats path was not patched.")
+
 
 script.write_text(text)
 print(f"Patched {script} for this SLURM run.")
