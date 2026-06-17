@@ -15,7 +15,7 @@ N_DETECTORS = len(DETECTOR_CODES)
 
 TARGET_COLS = [
     "truth_energy", "truth_px", "truth_py", "truth_pz",
-    "truth_eta", "truth_phi", "truth_log_pt",
+    "truth_eta", "truth_phi", "truth_log_pt", "truth_z0",
 ]
 
 
@@ -133,6 +133,19 @@ class ElectronDataset(Dataset):
         sum_et = float((e_cal.astype(np.float64) * sin_theta).sum())  # transverse-E proxy
         log_sum_et = float(np.log(max(sum_et, 1e-6)))
 
+        # --- pointing-z0 anchor: energy-weighted LS fit of cell z vs cell r,
+        # extrapolated to r=0. A straight shower points back to its production z.
+        r_cell = np.hypot(cx, cy).astype(np.float64)
+        z_cell = cz.astype(np.float64)
+        wz = w  # same energy weights as the centroid
+        wsum_z = float(wz.sum())
+        r_bar = float(np.sum(wz * r_cell) / wsum_z)
+        z_bar = float(np.sum(wz * z_cell) / wsum_z)
+        var_r = float(np.sum(wz * (r_cell - r_bar) ** 2) / wsum_z)
+        cov_rz = float(np.sum(wz * (r_cell - r_bar) * (z_cell - z_bar)) / wsum_z)
+        slope = cov_rz / var_r if var_r > 1e-9 else 0.0   # dz/dr
+        z0_anchor = float(z_bar - slope * r_bar)          # z at r=0 [mm]
+
         if self.use_cluster_features:
             n = x_high_level.shape[0]
 
@@ -149,7 +162,8 @@ class ElectronDataset(Dataset):
 
             cluster_feats = np.array(
                 [np.log(max(sum_e, 1e-6)), np.log(max(sum_et, 1e-6)), np.log(max(n, 1)),
-                 std_phi, skew_phi, std_eta, skew_eta],
+                 std_phi, skew_phi, std_eta, skew_eta,
+                 z0_anchor / 1000.0, slope],   # z0 in metres for scale; slope dimensionless
                 dtype=np.float32,
             )
             x_high_level = np.concatenate(
@@ -170,6 +184,7 @@ class ElectronDataset(Dataset):
             "phi_centroid": torch.tensor(phi_centroid, dtype=torch.float32),
             "eta_centroid": torch.tensor(eta_centroid, dtype=torch.float32),
             "log_sum_et":   torch.tensor(log_sum_et, dtype=torch.float32),
+            "z0_anchor":    torch.tensor(z0_anchor, dtype=torch.float32),
             "truth_charge": torch.tensor(float(row["truth_charge"]), dtype=torch.float32),
         }
 
@@ -196,6 +211,7 @@ def collate_pad(batch: list[dict]) -> dict:
     phi_centroid = torch.zeros(B)
     eta_centroid = torch.zeros(B)
     log_sum_et   = torch.zeros(B)
+    z0_anchor    = torch.zeros(B)
     truth_charge = torch.zeros(B)
 
     for i, item in enumerate(batch):
@@ -207,6 +223,7 @@ def collate_pad(batch: list[dict]) -> dict:
         phi_centroid[i] = item["phi_centroid"]
         eta_centroid[i] = item["eta_centroid"]
         log_sum_et[i]   = item["log_sum_et"]
+        z0_anchor[i]    = item["z0_anchor"]
         truth_charge[i] = item["truth_charge"]
     return {
         "x_sampled": x_sampled,
@@ -216,6 +233,7 @@ def collate_pad(batch: list[dict]) -> dict:
         "phi_centroid": phi_centroid,
         "eta_centroid": eta_centroid,
         "log_sum_et": log_sum_et,
+        "z0_anchor": z0_anchor,
         "truth_charge": truth_charge,
     }
 

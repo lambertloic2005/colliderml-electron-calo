@@ -39,6 +39,7 @@ from colliderml_electron.resolution import gaussian_resolution, plot_residual_fi
 ETA_INDEX = TARGET_COLS.index("truth_eta")
 PHI_INDEX = TARGET_COLS.index("truth_phi")
 LOGPT_INDEX = TARGET_COLS.index("truth_log_pt")
+Z0_INDEX = TARGET_COLS.index("truth_z0")
 
 
 def get_device() -> torch.device:
@@ -69,24 +70,27 @@ def collect_predictions(model, loader, device):
     model.eval()
 
     preds, targets = [], []
-    phi_cents, eta_cents, log_sum_ets = [], [], []
+    phi_cents, eta_cents, log_sum_ets, z0_anchors, charges = [], [], [], [], []
 
     for batch in loader:
         batch = move_batch_to_device(batch, device)
 
         pred = model(batch["x_sampled"], batch["x_high_level"], batch["mask"])
-        target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX]]
+        target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX, Z0_INDEX]]
 
         preds.append(pred.cpu().numpy())
         targets.append(target.cpu().numpy())
         phi_cents.append(batch["phi_centroid"].cpu().numpy())
         eta_cents.append(batch["eta_centroid"].cpu().numpy())
         log_sum_ets.append(batch["log_sum_et"].cpu().numpy())
+        z0_anchors.append(batch["z0_anchor"].cpu().numpy())
+        charges.append(batch["truth_charge"].cpu().numpy())
 
     return (
         np.concatenate(preds), np.concatenate(targets),
         np.concatenate(phi_cents), np.concatenate(eta_cents),
-        np.concatenate(log_sum_ets),
+        np.concatenate(log_sum_ets), np.concatenate(z0_anchors),
+        np.concatenate(charges),
     )
 
 
@@ -140,10 +144,10 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-    checkpoint_path = Path("checkpoints/ruche/ruche_Jun15_charge.pt")
+    checkpoint_path = Path("checkpoints/ruche/ruche_Jun15_3etaLim.pt")
     parquet_path = Path("data/electrons/testRuche/zee_pu200_supervised_dbscan_TEST.parquet")
     stats_path = Path("data/electrons/testRuche/target_stats.json")
-    output_dir = Path("results/ruche/Jun15_charge")
+    output_dir = Path("results/ruche/Jun15_3etaLim")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -182,29 +186,39 @@ def main():
     model.to(device)
 
     (pred_norm, target_norm, phi_centroid,
-     eta_centroid, log_sum_et) = collect_predictions(model, test_loader, device)
+     eta_centroid, log_sum_et, z0_anchor, charge) = collect_predictions(
+        model, test_loader, device)
 
     eta_mean, eta_std = stats["truth_eta"]["mean"], stats["truth_eta"]["std"]
     phi_mean, phi_std = stats["truth_phi"]["mean"], stats["truth_phi"]["std"]
     logpt_mean, logpt_std = stats["truth_log_pt"]["mean"], stats["truth_log_pt"]["std"]
+    z0_mean, z0_std = stats["truth_z0"]["mean"], stats["truth_z0"]["std"]
 
     # ---- decode predictions ----
     pred_eta = eta_centroid + pred_norm[:, 0]                    # anchor + predicted Δη
-    pred_delta = pred_norm[:, 1]                                 # predicted Δφ offset, radians
-    pred_phi = wrap_phi(phi_centroid + pred_delta)               # add anchor back
-    pred_logpt = log_sum_et + pred_norm[:, 2]                    # anchor + predicted Δln pT
+    # two phi hypotheses; convention q=-1 -> electron uses head index 1
+    pred_phi_e = wrap_phi(phi_centroid + pred_norm[:, 1])
+    pred_phi_p = wrap_phi(phi_centroid + pred_norm[:, 2])
+    is_e = charge < 0
+    pred_delta = np.where(is_e, pred_norm[:, 1], pred_norm[:, 2])
+    pred_phi = wrap_phi(phi_centroid + pred_delta)               # truth-charge-selected
+    pred_logpt = log_sum_et + pred_norm[:, 3]                    # anchor + predicted Δln pT
     pred_pt = np.exp(pred_logpt)                                  # GeV
+    pred_z0 = z0_anchor + pred_norm[:, 4]                        # anchor + predicted Δz0 [mm]            
 
     # ---- decode truth ----
     true_eta = target_norm[:, 0] * eta_std + eta_mean
     true_phi = wrap_phi(target_norm[:, 1] * phi_std + phi_mean)
     true_logpt = target_norm[:, 2] * logpt_std + logpt_mean
     true_pt = np.exp(true_logpt)
+    true_z0 = target_norm[:, 3] * z0_std + z0_mean
     # Anchor-only baselines: what you'd get with the model head outputting zero.
     # The trained model must beat these, otherwise the head is learning nothing.
     print(f"anchor-only eta  std: {np.std(eta_centroid - true_eta):.5f}")
     print(f"anchor-only phi  std: {np.std(angular_residual(phi_centroid, true_phi)):.5f} rad")
-    print(f"anchor-only lnpt std: {np.std(log_sum_et - true_logpt):.5f}")                               
+    print(f"anchor-only lnpt std: {np.std(log_sum_et - true_logpt):.5f}")
+    print(f"anchor-only z0   std: {np.std(z0_anchor - true_z0):.2f} mm")
+    print(f"beamspot prior   std: {np.std(true_z0):.2f} mm (z0 RMS with no model at all)")                              
 
     # ---- residuals ----
     eta_residual = pred_eta - true_eta
@@ -214,6 +228,7 @@ def main():
     # clean, bounded fractional-pT resolution (d ln pT ~ dpT/pT); not blown up
     # by low-pT electrons the way the linear relative residual is.
     logpt_residual = pred_logpt - true_logpt
+    z0_residual = pred_z0 - true_z0
     PT_FLOOR_GEV = 5.0
     hi = true_pt >= PT_FLOOR_GEV
     pt_rel_hi = pt_rel_residual[hi]
@@ -226,10 +241,6 @@ def main():
     if config.get("max_abs_eta") is not None:
         charge_df = charge_df.filter(pl.col("truth_eta").abs() <= config["max_abs_eta"])
     charge = charge_df["truth_charge"].to_numpy()
-    pred_charge = np.where(pred_norm[:, 3] > 0, 1, -1)
-    charge_accuracy = float((pred_charge == charge).mean())
-    print(f"charge accuracy: {charge_accuracy:.2%}")
-    metrics_charge = {"test/charge_accuracy": charge_accuracy}
     assert len(charge) == len(phi_residual), "charge/residual length mismatch"
     for q in (-1, +1):
         sel = charge == q
@@ -260,13 +271,28 @@ def main():
         "test/logpt_bias": float(np.mean(logpt_residual)),
         f"test/pt_rel_mae_above_{int(PT_FLOOR_GEV)}gev": float(np.mean(np.abs(pt_rel_hi))) if hi.any() else float("nan"),
         f"test/pt_rel_rmse_above_{int(PT_FLOOR_GEV)}gev": float(np.sqrt(np.mean(pt_rel_hi**2))) if hi.any() else float("nan"),
+        "test/z0_rmse_mm": float(np.sqrt(np.mean(z0_residual**2))),
+        "test/z0_mae_mm": float(np.mean(np.abs(z0_residual))),
+        "test/z0_bias_mm": float(np.mean(z0_residual)),
+        "test/z0_anchor_rmse_mm": float(np.sqrt(np.mean((z0_anchor - true_z0)**2))),
     }
 
-    metrics.update(metrics_charge)
     eta_fit = gaussian_resolution(eta_residual, wrap=False)
     phi_fit = gaussian_resolution(phi_residual, wrap=True)
     pt_fit = gaussian_resolution(pt_rel_residual, wrap=False)
     logpt_fit = gaussian_resolution(logpt_residual, wrap=False)
+    z0_fit = gaussian_resolution(z0_residual, wrap=False)
+
+    # Two-head phi diagnostic: how good is each hypothesis vs its MATCHING truth,
+    # and how good would the WRONG-charge selection be (cost of a charge flip)?
+    phi_res_e = angular_residual(pred_phi_e[is_e], true_phi[is_e])
+    phi_res_p = angular_residual(pred_phi_p[~is_e], true_phi[~is_e])
+    pred_phi_wrong = wrap_phi(phi_centroid + np.where(is_e, pred_norm[:, 2], pred_norm[:, 1]))
+    phi_res_wrong = angular_residual(pred_phi_wrong, true_phi)
+    print(f"\nphi (electron head, e- events): sigma~{np.std(phi_res_e):.5f} rad  n={is_e.sum()}")
+    print(f"phi (positron head, e+ events): sigma~{np.std(phi_res_p):.5f} rad  n={(~is_e).sum()}")
+    print(f"phi (truth-charge selected):    sigma~{np.std(phi_residual):.5f} rad  [headline]")
+    print(f"phi (wrong-charge selected):    sigma~{np.std(phi_res_wrong):.5f} rad  [cost of flip]")
     metrics.update({
         "test/eta_sigma":        eta_fit.sigma,
         "test/eta_bias_fit":     eta_fit.mu,
@@ -279,6 +305,9 @@ def main():
         "test/pt_tail_frac":     pt_fit.tail_fraction,
         "test/logpt_sigma":      logpt_fit.sigma,     # clean fractional pT resolution
         "test/logpt_tail_frac":  logpt_fit.tail_fraction,
+        "test/z0_sigma_mm":      z0_fit.sigma,
+        "test/z0_bias_fit_mm":   z0_fit.mu,
+        "test/z0_tail_frac":     z0_fit.tail_fraction,
     })
 
     print(f"eta  sigma={eta_fit.sigma:.6f}       tail={eta_fit.tail_fraction:.2%}")
@@ -301,6 +330,7 @@ def main():
         plot_expected_vs_predicted(true_eta, pred_eta, "eta", output_dir),
         plot_expected_vs_predicted(true_phi, pred_phi, "phi", output_dir, unit="rad"),
         plot_expected_vs_predicted(true_pt, pred_pt, "pt", output_dir, unit="GeV"),
+        plot_expected_vs_predicted(true_z0, pred_z0, "z0", output_dir, unit="mm"),
         plot_residuals(eta_residual, "eta", output_dir, unit="", wrap=False),
         plot_residuals(phi_residual, "phi", output_dir, unit="rad", wrap=True),
         plot_residuals(pt_rel_residual, "pt_rel", output_dir, unit="", wrap=False),

@@ -1,23 +1,3 @@
-"""
-Train eta, phi AND pT (as log pT) with the angular-feature inputs.
-
-Derived from scripts/train_eta_phi_angular_features.py. The only physics target
-added is log(pT); the input feature set is unchanged.
-
-Model output layout (output_dim = 4):
-
-    [eta, phi_cos, phi_sin, log_pt]   (all in z-scored space except the
-                                       phi pair, which lives on the unit circle)
-
-Targets are gathered from the parquet in the order [eta, phi, log_pt]; the loss
-turns the normalized phi scalar into (cos, sin) targets internally, exactly as
-the eta/phi angular-features script did.
-
-Prereqs (same as the eta/phi/pT edits):
-  - parquet has a `truth_log_pt` column
-  - target_stats.json contains stats for `truth_log_pt`
-"""
-
 import json
 from pathlib import Path
 
@@ -33,6 +13,7 @@ from colliderml_electron.model import ConcatCaloRegressor, ConvCaloRegressor
 ETA_INDEX = TARGET_COLS.index("truth_eta")
 PHI_INDEX = TARGET_COLS.index("truth_phi")
 LOGPT_INDEX = TARGET_COLS.index("truth_log_pt")
+Z0_INDEX = TARGET_COLS.index("truth_z0")
 
 
 def get_device() -> torch.device:
@@ -95,7 +76,7 @@ class KinematicLoss(nn.Module):
         eta_weight: float = 1.0,
         phi_weight: float = 1.0,
         logpt_weight: float = 1.0,
-        charge_weight: float = 1.0,
+        z0_weight: float = 1.0,
     ):
         super().__init__()
 
@@ -125,64 +106,86 @@ class KinematicLoss(nn.Module):
             "logpt_std",
             torch.tensor(stats["truth_log_pt"]["std"], dtype=torch.float32),
         )
+        self.register_buffer(
+            "z0_mean",
+            torch.tensor(stats["truth_z0"]["mean"], dtype=torch.float32),
+        )
+        self.register_buffer(
+            "z0_std",
+            torch.tensor(stats["truth_z0"]["std"], dtype=torch.float32),
+        )
 
         self.eta_weight = eta_weight
         self.phi_weight = phi_weight
         self.logpt_weight = logpt_weight
-        self.charge_weight = charge_weight
+        self.z0_weight = z0_weight
 
-    def forward(self, pred, target, phi_centroid, eta_centroid, log_sum_et, truth_charge):
-        # pred:   [delta_eta, delta_phi, delta_logpt, charge_logit]
-        # target: [eta_norm, phi_norm, logpt_norm]    (z-scored, gathered in this order)
-        # anchors: (B,) energy-weighted eta/phi centroids and log(sum E_T)
-        # truth_charge: (B,) in {-1, +1}
+    def forward(self, pred, target, phi_centroid, eta_centroid, log_sum_et,
+                z0_anchor, truth_charge):
+        # pred: [delta_eta, delta_phi_e, delta_phi_p, delta_logpt, delta_z0]
+        # target: [eta_norm, phi_norm, logpt_norm, z0_norm] (z-scored, this order)
+        # truth_charge: (B,) in {-1, +1}; routes which phi head is "direct"
         pred_deta = pred[:, 0]
-        pred_dphi = pred[:, 1]
-        pred_dlogpt = pred[:, 2]
-        pred_charge_logit = pred[:, 3]
+        pred_dphi_e = pred[:, 1]      # phi correction under electron hypothesis
+        pred_dphi_p = pred[:, 2]      # phi correction under positron hypothesis
+        pred_dlogpt = pred[:, 3]
+        pred_dz0 = pred[:, 4]
 
         target_eta = target[:, 0] * self.eta_std + self.eta_mean
         target_phi = target[:, 1] * self.phi_std + self.phi_mean
         target_logpt = target[:, 2] * self.logpt_std + self.logpt_mean
+        target_z0 = target[:, 3] * self.z0_std + self.z0_mean
 
         deta_target = target_eta - eta_centroid
-        dphi_target = wrapped_angle_delta(target_phi, phi_centroid)
+        dphi_target = wrapped_angle_delta(target_phi, phi_centroid)   # the real residual d
         dlogpt_target = target_logpt - log_sum_et
-        charge01 = (truth_charge + 1.0) / 2.0          # {-1,+1} -> {0,1}
+        dz0_target = target_z0 - z0_anchor
+
+        # --- Option 2: mirror-symmetry two-head phi ---
+        # is_electron = True where truth_charge == -1 (convention: q=-1 is electron)
+        is_e = (truth_charge < 0).float()
+        # the head matching the true charge gets d; the other gets -d (mirror)
+        e_target = torch.where(is_e > 0.5, dphi_target, -dphi_target)
+        p_target = torch.where(is_e > 0.5, -dphi_target, dphi_target)
 
         eta_loss = F.huber_loss(pred_deta, deta_target, delta=0.1)
-        phi_err = wrapped_angle_delta(pred_dphi, dphi_target)
-        phi_loss = F.huber_loss(phi_err, torch.zeros_like(phi_err), delta=0.05)
+        phi_e_err = wrapped_angle_delta(pred_dphi_e, e_target)
+        phi_p_err = wrapped_angle_delta(pred_dphi_p, p_target)
+        phi_loss = 0.5 * (
+            F.huber_loss(phi_e_err, torch.zeros_like(phi_e_err), delta=0.05)
+            + F.huber_loss(phi_p_err, torch.zeros_like(phi_p_err), delta=0.05)
+        )
         logpt_loss = F.huber_loss(pred_dlogpt, dlogpt_target, delta=0.2)
-        charge_loss = F.binary_cross_entropy_with_logits(pred_charge_logit, charge01)
+        z0_loss = F.huber_loss(pred_dz0, dz0_target, delta=20.0)   # mm
 
         eps = 1e-12
-        w = self.eta_weight + self.phi_weight + self.logpt_weight + self.charge_weight
+        w = (self.eta_weight + self.phi_weight + self.logpt_weight + self.z0_weight)
         log_total = (
             self.eta_weight * torch.log(eta_loss + eps)
             + self.phi_weight * torch.log(phi_loss + eps)
             + self.logpt_weight * torch.log(logpt_loss + eps)
-            + self.charge_weight * torch.log(charge_loss + eps)
+            + self.z0_weight * torch.log(z0_loss + eps)
         ) / w
         total_loss = torch.exp(log_total)
 
-        # diagnostics: decode by adding the anchors back, compare to truth
-        pred_phi = phi_centroid + pred_dphi
+        # diagnostics: decode the truth-charge-selected phi (what a downstream
+        # user gets with correct track matching), compare to truth
+        pred_dphi_sel = torch.where(is_e > 0.5, pred_dphi_e, pred_dphi_p)
+        pred_phi = phi_centroid + pred_dphi_sel
         delta_phi = wrapped_angle_delta(pred_phi, target_phi)
-        d_lnpt = pred_dlogpt - dlogpt_target          # = pred_logpt - true_logpt
-        pred_charge = torch.where(pred_charge_logit > 0, 1.0, -1.0)
-        charge_acc = (pred_charge == truth_charge).float().mean()
+        d_lnpt = pred_dlogpt - dlogpt_target
+        dz0_err = pred_dz0 - dz0_target
 
         logs = {
             "loss_total": total_loss.detach(),
             "loss_eta": eta_loss.detach(),
             "loss_phi": phi_loss.detach(),
             "loss_logpt": logpt_loss.detach(),
-            "loss_charge": charge_loss.detach(),
-            "charge_acc": charge_acc.detach(),
+            "loss_z0": z0_loss.detach(),
             "phi_mae_rad": delta_phi.abs().mean().detach(),
             "phi_rmse_rad": torch.sqrt(torch.mean(delta_phi ** 2)).detach(),
             "pt_rel_rmse": torch.sqrt(torch.mean(d_lnpt ** 2)).detach(),
+            "z0_rmse_mm": torch.sqrt(torch.mean(dz0_err ** 2)).detach(),
         }
         return total_loss, logs
 
@@ -201,11 +204,11 @@ def evaluate(
         "loss_eta": 0.0,
         "loss_phi": 0.0,
         "loss_logpt": 0.0,
-        "loss_charge": 0.0,
-        "charge_acc": 0.0,
+        "loss_z0": 0.0,
         "phi_mae_rad": 0.0,
         "phi_rmse_rad": 0.0,
         "pt_rel_rmse": 0.0,
+        "z0_rmse_mm": 0.0,
     }
 
     n_batches = 0
@@ -219,12 +222,12 @@ def evaluate(
             batch["mask"],
         )
 
-        target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX]]
+        target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX, Z0_INDEX]]
 
         loss, logs = loss_fn(
             pred, target,
             batch["phi_centroid"], batch["eta_centroid"], batch["log_sum_et"],
-            batch["truth_charge"],
+            batch["z0_anchor"], batch["truth_charge"],
         )
 
         for key in totals:
@@ -240,8 +243,8 @@ def evaluate(
 
 def main():
     config = {
-        "architecture": "concat_transformer_eta_phi_pt_angular_features",
-        "high_level_dim": 19,
+        "architecture": "concat_transformer_eta_phi_pt_z0_charge",
+        "high_level_dim": 21,
         "max_abs_eta": 3,
         "use_angular_features": True,
         "use_cluster_features": True,
@@ -249,7 +252,7 @@ def main():
         "parquet_path": "data/electrons/electrons.parquet",
         "target_stats_path": "data/electrons/target_stats.json",
 
-        "target_cols": ["truth_eta", "truth_phi", "truth_log_pt"],
+        "target_cols": ["truth_eta", "truth_phi", "truth_log_pt", "truth_z0"],
 
         "max_cells": 128,
         "model_dim": 128,
@@ -257,7 +260,7 @@ def main():
         "n_layers": 3,
         "dim_feedforward": 256,
         "dropout": 0.1,
-        "output_dim": 4, # eta, phi, logpt, charge
+        "output_dim": 5,
 
         "batch_size": 64,
         "n_epochs": 144,
@@ -268,7 +271,7 @@ def main():
         "eta_weight": 1.0,
         "phi_weight": 1.0,
         "logpt_weight": 1.0,
-        "charge_weight": 1.0,
+        "z0_weight": 1.0,
 
         "log_freq_batches": 10,
         "watch_gradients": False,
@@ -282,7 +285,7 @@ def main():
 
     with wandb.init(
         project="colliderml-electron-calo",
-        name="eta-phi-pt",
+        name="eta-phi-pt-z0",
         job_type="training",
         config=config,
     ) as run:
@@ -346,7 +349,7 @@ def main():
             eta_weight=cfg["eta_weight"],
             phi_weight=cfg["phi_weight"],
             logpt_weight=cfg["logpt_weight"],
-            charge_weight=cfg.get("charge_weight", 1.0),
+            z0_weight=cfg.get("z0_weight", 1.0),
         ).to(device)
 
         optimizer = torch.optim.AdamW(
@@ -390,12 +393,12 @@ def main():
                     batch["mask"],
                 )
 
-                target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX]]
+                target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX, Z0_INDEX]]
 
                 loss, logs = loss_fn(
                     pred, target,
                     batch["phi_centroid"], batch["eta_centroid"], batch["log_sum_et"],
-                    batch["truth_charge"],
+                    batch["z0_anchor"], batch["truth_charge"],
                 )
 
                 optimizer.zero_grad()
@@ -483,7 +486,7 @@ def main():
             )
 
         Path("checkpoints").mkdir(exist_ok=True)
-        checkpoint_path = Path("checkpoints/ruche_eta_phi_pt_supervised_dbscan.pt")
+        checkpoint_path = Path("checkpoints/ruche_eta_phi_pt_z0_charge.pt")
 
         if best_state is not None:
             model.load_state_dict(best_state)
@@ -492,7 +495,7 @@ def main():
             {
                 "model_state_dict": model.state_dict(),
                 "config": dict(cfg),
-                "target_cols": ["truth_eta", "truth_phi", "truth_log_pt"],
+                "target_cols": ["truth_eta", "truth_phi", "truth_log_pt", "truth_z0"],
                 "best_val_loss": best_val_loss,
                 "best_val_phi_loss": best_val_phi_loss,
                 "best_val_pt_rel_rmse": best_val_pt_rel_rmse,
@@ -501,7 +504,7 @@ def main():
         )
 
         artifact = wandb.Artifact(
-            name="eta_phi_pt_dbscan",
+            name="eta_phi_pt_z0",
             type="model",
             metadata={
                 "best_val_loss": best_val_loss,
