@@ -6,7 +6,7 @@ import polars as pl
 def compute_target_stats(
     parquet_path: str | Path,
     target_cols: list[str],
-    out_path: str | Path = "data/electrons/target_stats.json",
+    out_path: str | Path = "data/electrons/eta_phi_pt_z0_charge/target_stats.json",
 ) -> dict:
     df = pl.read_parquet(parquet_path).filter(pl.col("split") == "train")
     stats = {
@@ -18,7 +18,9 @@ def compute_target_stats(
     return stats
 
 if __name__ == "__main__":
+    from colliderml_electron.dataset import TARGET_COLS
+
     compute_target_stats(
-        "data/electrons/electrons.parquet",
-        ["truth_energy", "truth_px", "truth_py", "truth_pz", "truth_eta", "truth_phi"],
+        "data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet",
+        list(TARGET_COLS),
     )
