@@ -414,16 +414,16 @@ script = Path("scripts/test_eta_phi_pt_z0_charge.py")
 text = script.read_text()
 
 replacements = {
-    'checkpoint_path = Path("checkpoints/ruche/ruche_Jun15_3etaLim.pt")':
+    'checkpoint_path = Path("checkpoints/ruche/ruche_Jun19_first.pt")':
         f'checkpoint_path = Path("{os.environ["TEST_CKPT"]}")',
 
-    'parquet_path = Path("data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge_TEST.parquet")':
+    'parquet_path = Path("data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet")':
         f'parquet_path = Path("{os.environ["TEST_PARQUET"]}")',
 
     'stats_path = Path("data/electrons/eta_phi_pt_z0_charge/target_stats.json")':
         f'stats_path = Path("{os.environ["TEST_STATS"]}")',
 
-    'output_dir = Path("results/ruche/Jun15_3etaLim")':
+    'output_dir = Path("results/ruche/Jun19_first")':
         f'output_dir = Path("{os.environ["TEST_OUTPUT_DIR"]}")',
 }
 
