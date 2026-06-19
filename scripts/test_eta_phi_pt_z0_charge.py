@@ -144,10 +144,10 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-    checkpoint_path = Path("checkpoints/ruche/ruche_Jun19_first.pt")
+    checkpoint_path = Path("checkpoints/ruche/ruche_Jun19_z0AnchorFix_homoscedastic.pt")
     parquet_path = Path("data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet")
     stats_path = Path("data/electrons/eta_phi_pt_z0_charge/target_stats.json")
-    output_dir = Path("results/ruche/Jun19_first")
+    output_dir = Path("results/ruche/Jun19_z0AnchorFix_homoscedastic")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -232,6 +232,20 @@ def main():
     PT_FLOOR_GEV = 5.0
     hi = true_pt >= PT_FLOOR_GEV
     pt_rel_hi = pt_rel_residual[hi]
+
+    # --- low-pt diagnostic for the relative-pT error ---
+    order = np.argsort(-np.abs(pt_rel_residual))
+    print("\nWorst 10 pt_rel offenders (true_pt, pred_pt, rel_err):")
+    for j in order[:10]:
+        print(f"  true={true_pt[j]:8.3f} GeV  pred={pred_pt[j]:8.3f} GeV  "
+              f"rel={pt_rel_residual[j]:+.2f}")
+    print("\npt_rel error by true-pT bin:")
+    for lo, hi_edge in [(0, 2), (2, 5), (5, 10), (10, 30), (30, 1e9)]:
+        m = (true_pt >= lo) & (true_pt < hi_edge)
+        if m.any():
+            print(f"  [{lo:>3},{hi_edge:>5}) GeV: n={int(m.sum()):5d}  "
+                  f"rel_rmse={np.sqrt(np.mean(pt_rel_residual[m]**2)):.3f}  "
+                  f"rel_mae={np.mean(np.abs(pt_rel_residual[m])):.3f}")
 
     import polars as pl
     charge_df = (
@@ -335,8 +349,9 @@ def main():
         plot_residuals(eta_residual, "eta", output_dir, unit="", wrap=False),
         plot_residuals(phi_residual, "phi", output_dir, unit="rad", wrap=True),
         plot_residuals(pt_rel_residual, "pt_rel", output_dir, unit="", wrap=False),
+        plot_residuals(z0_residual, "z0", output_dir, unit="mm", wrap=False),   # NEW
     ]
-
+    
     metrics_path = output_dir / "test_metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2))
 

@@ -160,12 +160,36 @@ class ElectronDataset(Dataset):
             std_eta = float(np.sqrt(max(np.sum(w * deta_all**2) / wsum, 1e-12)))
             skew_eta = float(np.sum(w * deta_all**3) / wsum) / std_eta**3
 
+            # --- pointing-line quality: lets the net judge when to trust the anchor ---
+            z_fit = z_bar + slope * (r_cell - r_bar)
+            fit_rms = float(np.sqrt(np.sum(wz * (z_cell - z_fit) ** 2) / wsum_z))
+            r_spread = float(np.sqrt(max(var_r, 0.0)))   # mm; small => slope ill-determined
+
+            # --- longitudinal pointing profile: E-weighted <z> in K radial slices ---
+            K = 6
+            r_lo, r_hi = float(r_cell.min()), float(r_cell.max())
+            edges = np.linspace(r_lo, r_hi + 1e-6, K + 1)
+            prof_z = np.zeros(K, dtype=np.float32)   # (<z> - anchor)/100 per slice
+            prof_r = np.zeros(K, dtype=np.float32)   # <r>/1000 per slice [m]
+            prof_f = np.zeros(K, dtype=np.float32)   # energy fraction per slice
+            for k in range(K):
+                m = (r_cell >= edges[k]) & (r_cell < edges[k + 1])
+                if m.any():
+                    sk = float(wz[m].sum())
+                    prof_z[k] = (np.sum(wz[m] * z_cell[m]) / sk - z0_anchor) / 100.0
+                    prof_r[k] = (np.sum(wz[m] * r_cell[m]) / sk) / 1000.0
+                    prof_f[k] = sk / wsum_z
+    
             cluster_feats = np.array(
                 [np.log(max(sum_e, 1e-6)), np.log(max(sum_et, 1e-6)), np.log(max(n, 1)),
                  std_phi, skew_phi, std_eta, skew_eta,
-                 z0_anchor / 1000.0, slope],   # z0 in metres for scale; slope dimensionless
+                 z0_anchor / 1000.0, slope,
+                 r_spread / 1000.0, fit_rms / 100.0],   # NEW: pointing-fit quality
                 dtype=np.float32,
             )
+            cluster_feats = np.concatenate(
+                [cluster_feats, prof_r, prof_z, prof_f]   # NEW: + 3*K profile features
+            ).astype(np.float32)
             x_high_level = np.concatenate(
                 [x_high_level, np.tile(cluster_feats, (n, 1))], axis=-1
             )
