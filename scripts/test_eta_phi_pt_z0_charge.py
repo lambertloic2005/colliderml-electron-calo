@@ -144,10 +144,10 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-    checkpoint_path = Path("checkpoints/ruche/ruche_Jun19_z0AnchorFix_homoscedastic.pt")
+    checkpoint_path = Path("checkpoints/ruche/ruche_Jun19_z0Slice.pt")
     parquet_path = Path("data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet")
     stats_path = Path("data/electrons/eta_phi_pt_z0_charge/target_stats.json")
-    output_dir = Path("results/ruche/Jun19_z0AnchorFix_homoscedastic")
+    output_dir = Path("results/ruche/Jun19_z0Slice")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -292,6 +292,14 @@ def main():
         "test/z0_prior_rmse_mm": float(np.sqrt(np.mean((z0_mean - true_z0) ** 2))),
     }
 
+    print("\nz0 resolution by |eta| region:")
+    for lo, hi_e, label in [(0.0, 1.2, "barrel"), (1.2, 2.5, "endcap"), (2.5, 99, "fwd")]:
+        m = (np.abs(true_eta) >= lo) & (np.abs(true_eta) < hi_e)
+        if m.any():
+            print(f"  |eta| [{lo},{hi_e}) {label:7s}: n={int(m.sum()):5d}  "
+                  f"rmse={np.sqrt(np.mean(z0_residual[m]**2)):6.1f} mm  "
+                  f"prior={np.std(true_z0[m]):6.1f} mm")
+            
     eta_fit = gaussian_resolution(eta_residual, wrap=False)
     phi_fit = gaussian_resolution(phi_residual, wrap=True)
     pt_fit = gaussian_resolution(pt_rel_residual, wrap=False)
