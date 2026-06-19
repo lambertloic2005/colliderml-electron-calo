@@ -120,6 +120,9 @@ class KinematicLoss(nn.Module):
         self.logpt_weight = logpt_weight
         self.z0_weight = z0_weight
 
+        # learned per-task log-sigma for uncertainty weighting (eta, phi, logpt, z0)
+        self.log_sigma = nn.Parameter(torch.zeros(4))
+
     def forward(self, pred, target, phi_centroid, eta_centroid, log_sum_et,
                 z0_anchor, truth_charge):
         # pred: [delta_eta, delta_phi_e, delta_phi_p, delta_logpt, delta_z0]
@@ -134,12 +137,14 @@ class KinematicLoss(nn.Module):
         target_eta = target[:, 0] * self.eta_std + self.eta_mean
         target_phi = target[:, 1] * self.phi_std + self.phi_mean
         target_logpt = target[:, 2] * self.logpt_std + self.logpt_mean
-        target_z0 = target[:, 3] * self.z0_std + self.z0_mean
 
         deta_target = target_eta - eta_centroid
         dphi_target = wrapped_angle_delta(target_phi, phi_centroid)   # the real residual d
         dlogpt_target = target_logpt - log_sum_et
-        dz0_target = target_z0 - z0_anchor
+        # z0: predict the z-scored vertex-z DIRECTLY. Anchor = beamspot mean = 0
+        # in normalized space. The unstable pointing extrapolation is NOT a
+        # baseline; it remains only an input feature (cluster_feats).
+        z0_target_norm = target[:, 3]                                # already z-scored
 
         # --- Option 2: mirror-symmetry two-head phi ---
         # is_electron = True where truth_charge == -1 (convention: q=-1 is electron)
@@ -156,17 +161,24 @@ class KinematicLoss(nn.Module):
             + F.huber_loss(phi_p_err, torch.zeros_like(phi_p_err), delta=0.05)
         )
         logpt_loss = F.huber_loss(pred_dlogpt, dlogpt_target, delta=0.2)
-        z0_loss = F.huber_loss(pred_dz0, dz0_target, delta=20.0)   # mm
+        z0_loss = F.huber_loss(pred_dz0, z0_target_norm, delta=1.0)   # normalized units
 
-        eps = 1e-12
-        w = (self.eta_weight + self.phi_weight + self.logpt_weight + self.z0_weight)
-        log_total = (
-            self.eta_weight * torch.log(eta_loss + eps)
-            + self.phi_weight * torch.log(phi_loss + eps)
-            + self.logpt_weight * torch.log(logpt_loss + eps)
-            + self.z0_weight * torch.log(z0_loss + eps)
-        ) / w
-        total_loss = torch.exp(log_total)
+        # eps = 1e-12
+        # w = (self.eta_weight + self.phi_weight + self.logpt_weight + self.z0_weight)
+        # log_total = (
+        #     self.eta_weight * torch.log(eta_loss + eps)
+        #     + self.phi_weight * torch.log(phi_loss + eps)
+        #     + self.logpt_weight * torch.log(logpt_loss + eps)
+        #     + self.z0_weight * torch.log(z0_loss + eps)
+        # ) / w
+        # total_loss = torch.exp(log_total)
+
+        # Homoscedastic uncertainty weighting: total = sum_i [ exp(-2 s_i) L_i + s_i ],
+        # s_i = log sigma_i (learned). Unlike the geometric mean this does NOT
+        # collapse the gradient of a high-loss task, so the z0 head gets supervised.
+        task_losses = torch.stack([eta_loss, phi_loss, logpt_loss, z0_loss])
+        precision = torch.exp(-2.0 * self.log_sigma)
+        total_loss = (precision * task_losses + self.log_sigma).sum()
 
         # diagnostics: decode the truth-charge-selected phi (what a downstream
         # user gets with correct track matching), compare to truth
@@ -174,7 +186,7 @@ class KinematicLoss(nn.Module):
         pred_phi = phi_centroid + pred_dphi_sel
         delta_phi = wrapped_angle_delta(pred_phi, target_phi)
         d_lnpt = pred_dlogpt - dlogpt_target
-        dz0_err = pred_dz0 - dz0_target
+        dz0_err = (pred_dz0 - z0_target_norm) * self.z0_std          # back to mm
 
         logs = {
             "loss_total": total_loss.detach(),
@@ -353,7 +365,10 @@ def main():
         ).to(device)
 
         optimizer = torch.optim.AdamW(
-            model.parameters(),
+            [
+                {"params": model.parameters()},
+                {"params": loss_fn.parameters(), "weight_decay": 0.0},
+            ],
             lr=cfg["learning_rate"],
             weight_decay=cfg["weight_decay"],
         )

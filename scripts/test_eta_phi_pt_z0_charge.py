@@ -204,7 +204,7 @@ def main():
     pred_phi = wrap_phi(phi_centroid + pred_delta)               # truth-charge-selected
     pred_logpt = log_sum_et + pred_norm[:, 3]                    # anchor + predicted Δln pT
     pred_pt = np.exp(pred_logpt)                                  # GeV
-    pred_z0 = z0_anchor + pred_norm[:, 4]                        # anchor + predicted Δz0 [mm]            
+    pred_z0 = pred_norm[:, 4] * z0_std + z0_mean                 # normalized -> mm (beamspot-anchored)                        # anchor + predicted Δz0 [mm]            
 
     # ---- decode truth ----
     true_eta = target_norm[:, 0] * eta_std + eta_mean
@@ -275,6 +275,7 @@ def main():
         "test/z0_mae_mm": float(np.mean(np.abs(z0_residual))),
         "test/z0_bias_mm": float(np.mean(z0_residual)),
         "test/z0_anchor_rmse_mm": float(np.sqrt(np.mean((z0_anchor - true_z0)**2))),
+        "test/z0_prior_rmse_mm": float(np.sqrt(np.mean((z0_mean - true_z0) ** 2))),
     }
 
     eta_fit = gaussian_resolution(eta_residual, wrap=False)
