@@ -120,73 +120,52 @@ class KinematicLoss(nn.Module):
         self.logpt_weight = logpt_weight
         self.z0_weight = z0_weight
 
-        # learned per-task log-sigma for uncertainty weighting (eta, phi, logpt, z0)
-        self.log_sigma = nn.Parameter(torch.zeros(4))
+        # learned per-task log-sigma for uncertainty weighting (eta, phi, logpt, z0, charge)
+        self.log_sigma = nn.Parameter(torch.zeros(5))
 
     def forward(self, pred, target, phi_centroid, eta_centroid, log_sum_et,
                 z0_anchor, truth_charge):
-        # pred: [delta_eta, delta_phi_e, delta_phi_p, delta_logpt, delta_z0]
+        # pred: [delta_eta, delta_phi, delta_logpt, delta_z0, charge_logit]
         # target: [eta_norm, phi_norm, logpt_norm, z0_norm] (z-scored, this order)
-        # truth_charge: (B,) in {-1, +1}; routes which phi head is "direct"
-        pred_deta = pred[:, 0]
-        pred_dphi_e = pred[:, 1]      # phi correction under electron hypothesis
-        pred_dphi_p = pred[:, 2]      # phi correction under positron hypothesis
-        pred_dlogpt = pred[:, 3]
-        pred_dz0 = pred[:, 4]
+        # truth_charge: (B,) in {-1, +1}; used ONLY as the classification label now.
+        pred_deta    = pred[:, 0]
+        pred_dphi    = pred[:, 1]      # single signed bend; its sign IS the charge handle
+        pred_dlogpt  = pred[:, 2]
+        pred_dz0     = pred[:, 3]
+        charge_logit = pred[:, 4]      # logit > 0 => predict positron (q = +1)
 
-        target_eta = target[:, 0] * self.eta_std + self.eta_mean
-        target_phi = target[:, 1] * self.phi_std + self.phi_mean
+        target_eta   = target[:, 0] * self.eta_std + self.eta_mean
+        target_phi   = target[:, 1] * self.phi_std + self.phi_mean
         target_logpt = target[:, 2] * self.logpt_std + self.logpt_mean
 
-        deta_target = target_eta - eta_centroid
-        dphi_target = wrapped_angle_delta(target_phi, phi_centroid)   # the real residual d
-        dlogpt_target = target_logpt - log_sum_et
-        # z0: predict the z-scored vertex-z DIRECTLY. Anchor = beamspot mean = 0
-        # in normalized space. The unstable pointing extrapolation is NOT a
-        # baseline; it remains only an input feature (cluster_feats).
-        z0_target_norm = target[:, 3]                                # already z-scored
-
-        # --- Option 2: mirror-symmetry two-head phi ---
-        # is_electron = True where truth_charge == -1 (convention: q=-1 is electron)
-        is_e = (truth_charge < 0).float()
-        # the head matching the true charge gets d; the other gets -d (mirror)
-        e_target = torch.where(is_e > 0.5, dphi_target, -dphi_target)
-        p_target = torch.where(is_e > 0.5, -dphi_target, dphi_target)
+        deta_target    = target_eta - eta_centroid
+        dphi_target    = wrapped_angle_delta(target_phi, phi_centroid)  # signed; sign = bend dir
+        dlogpt_target  = target_logpt - log_sum_et
+        z0_target_norm = target[:, 3]                                   # already z-scored
 
         eta_loss = F.huber_loss(pred_deta, deta_target, delta=0.1)
-        phi_e_err = wrapped_angle_delta(pred_dphi_e, e_target)
-        phi_p_err = wrapped_angle_delta(pred_dphi_p, p_target)
-        phi_loss = 0.5 * (
-            F.huber_loss(phi_e_err, torch.zeros_like(phi_e_err), delta=0.05)
-            + F.huber_loss(phi_p_err, torch.zeros_like(phi_p_err), delta=0.05)
-        )
+        phi_err  = wrapped_angle_delta(pred_dphi, dphi_target)
+        phi_loss = F.huber_loss(phi_err, torch.zeros_like(phi_err), delta=0.05)
         logpt_loss = F.huber_loss(pred_dlogpt, dlogpt_target, delta=0.2)
-        z0_loss = F.huber_loss(pred_dz0, z0_target_norm, delta=1.0)   # normalized units
+        z0_loss = F.huber_loss(pred_dz0, z0_target_norm, delta=1.0)
 
-        # eps = 1e-12
-        # w = (self.eta_weight + self.phi_weight + self.logpt_weight + self.z0_weight)
-        # log_total = (
-        #     self.eta_weight * torch.log(eta_loss + eps)
-        #     + self.phi_weight * torch.log(phi_loss + eps)
-        #     + self.logpt_weight * torch.log(logpt_loss + eps)
-        #     + self.z0_weight * torch.log(z0_loss + eps)
-        # ) / w
-        # total_loss = torch.exp(log_total)
+        # charge: binary classification. label 1 = positron (q=+1), 0 = electron (q=-1)
+        charge_label = (truth_charge > 0).float()
+        charge_loss = F.binary_cross_entropy_with_logits(charge_logit, charge_label)
 
-        # Homoscedastic uncertainty weighting: total = sum_i [ exp(-2 s_i) L_i + s_i ],
-        # s_i = log sigma_i (learned). Unlike the geometric mean this does NOT
-        # collapse the gradient of a high-loss task, so the z0 head gets supervised.
-        task_losses = torch.stack([eta_loss, phi_loss, logpt_loss, z0_loss])
+        # Homoscedastic uncertainty weighting over 5 tasks. This is exactly the
+        # mechanism that lets a BCE term and Huber terms (very different scales)
+        # coexist without hand-tuned weights.
+        task_losses = torch.stack([eta_loss, phi_loss, logpt_loss, z0_loss, charge_loss])
         precision = torch.exp(-2.0 * self.log_sigma)
         total_loss = (precision * task_losses + self.log_sigma).sum()
 
-        # diagnostics: decode the truth-charge-selected phi (what a downstream
-        # user gets with correct track matching), compare to truth
-        pred_dphi_sel = torch.where(is_e > 0.5, pred_dphi_e, pred_dphi_p)
-        pred_phi = phi_centroid + pred_dphi_sel
+        # diagnostics: phi is now decoded WITHOUT any truth charge
+        pred_phi = phi_centroid + pred_dphi
         delta_phi = wrapped_angle_delta(pred_phi, target_phi)
         d_lnpt = pred_dlogpt - dlogpt_target
-        dz0_err = (pred_dz0 - z0_target_norm) * self.z0_std          # back to mm
+        dz0_err = (pred_dz0 - z0_target_norm) * self.z0_std            # back to mm
+        charge_acc = ((charge_logit > 0).float() == charge_label).float().mean()
 
         logs = {
             "loss_total": total_loss.detach(),
@@ -194,6 +173,8 @@ class KinematicLoss(nn.Module):
             "loss_phi": phi_loss.detach(),
             "loss_logpt": logpt_loss.detach(),
             "loss_z0": z0_loss.detach(),
+            "loss_charge": charge_loss.detach(),
+            "charge_acc": charge_acc.detach(),
             "phi_mae_rad": delta_phi.abs().mean().detach(),
             "phi_rmse_rad": torch.sqrt(torch.mean(delta_phi ** 2)).detach(),
             "pt_rel_rmse": torch.sqrt(torch.mean(d_lnpt ** 2)).detach(),

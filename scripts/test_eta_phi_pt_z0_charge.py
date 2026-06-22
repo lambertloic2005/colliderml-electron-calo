@@ -197,14 +197,14 @@ def main():
     # ---- decode predictions ----
     pred_eta = eta_centroid + pred_norm[:, 0]                    # anchor + predicted Δη
     # two phi hypotheses; convention q=-1 -> electron uses head index 1
-    pred_phi_e = wrap_phi(phi_centroid + pred_norm[:, 1])
-    pred_phi_p = wrap_phi(phi_centroid + pred_norm[:, 2])
-    is_e = charge < 0
-    pred_delta = np.where(is_e, pred_norm[:, 1], pred_norm[:, 2])
-    pred_phi = wrap_phi(phi_centroid + pred_delta)               # truth-charge-selected
-    pred_logpt = log_sum_et + pred_norm[:, 3]                    # anchor + predicted Δln pT
-    pred_pt = np.exp(pred_logpt)                                  # GeV
-    pred_z0 = pred_norm[:, 4] * z0_std + z0_mean                 # normalized -> mm (beamspot-anchored)                        # anchor + predicted Δz0 [mm]            
+    pred_phi = wrap_phi(phi_centroid + pred_norm[:, 1])         # charge-free, no truth used
+    pred_logpt = log_sum_et + pred_norm[:, 2]                   # anchor + predicted Δln pT
+    pred_pt = np.exp(pred_logpt)                                # GeV
+    pred_z0 = pred_norm[:, 3] * z0_std + z0_mean               # normalized -> mm
+    charge_logit = pred_norm[:, 4]
+    pred_charge = np.where(charge_logit > 0, +1, -1)           # predicted charge
+    charge_acc = float(np.mean(pred_charge == charge))
+    print(f"\ncharge accuracy (calo-only): {charge_acc:.4f}  n={len(charge)}")                 # normalized -> mm (beamspot-anchored)                        # anchor + predicted Δz0 [mm]            
 
     # ---- decode truth ----
     true_eta = target_norm[:, 0] * eta_std + eta_mean
