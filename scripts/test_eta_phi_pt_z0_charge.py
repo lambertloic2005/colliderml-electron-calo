@@ -306,16 +306,16 @@ def main():
     logpt_fit = gaussian_resolution(logpt_residual, wrap=False)
     z0_fit = gaussian_resolution(z0_residual, wrap=False)
 
-    # Two-head phi diagnostic: how good is each hypothesis vs its MATCHING truth,
-    # and how good would the WRONG-charge selection be (cost of a charge flip)?
-    phi_res_e = angular_residual(pred_phi_e[is_e], true_phi[is_e])
-    phi_res_p = angular_residual(pred_phi_p[~is_e], true_phi[~is_e])
-    pred_phi_wrong = wrap_phi(phi_centroid + np.where(is_e, pred_norm[:, 2], pred_norm[:, 1]))
-    phi_res_wrong = angular_residual(pred_phi_wrong, true_phi)
-    print(f"\nphi (electron head, e- events): sigma~{np.std(phi_res_e):.5f} rad  n={is_e.sum()}")
-    print(f"phi (positron head, e+ events): sigma~{np.std(phi_res_p):.5f} rad  n={(~is_e).sum()}")
-    print(f"phi (truth-charge selected):    sigma~{np.std(phi_residual):.5f} rad  [headline]")
-    print(f"phi (wrong-charge selected):    sigma~{np.std(phi_res_wrong):.5f} rad  [cost of flip]")
+    # Calo-only charge ID, binned by true pT. The bend handle (Δφ ~ q·B·L/pT)
+    # shrinks with pT, so accuracy should fall from ~good at low pT toward 0.5
+    # (chance) at high pT. This curve IS the complementarity result.
+    print("\ncharge accuracy by true-pT bin:")
+    for lo, hi_edge in [(0, 2), (2, 5), (5, 10), (10, 30), (30, 1e9)]:
+        m = (true_pt >= lo) & (true_pt < hi_edge)
+        if m.any():
+            acc = float(np.mean(pred_charge[m] == charge[m]))
+            print(f"  [{lo:>4.0f}, {hi_edge:<5.0f}) GeV : acc={acc:.4f}  n={int(m.sum())}")
+    print(f"phi (charge-free, no truth used): sigma~{np.std(phi_residual):.5f} rad  [headline]")
     metrics.update({
         "test/eta_sigma":        eta_fit.sigma,
         "test/eta_bias_fit":     eta_fit.mu,

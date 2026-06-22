@@ -202,6 +202,8 @@ def evaluate(
         "phi_rmse_rad": 0.0,
         "pt_rel_rmse": 0.0,
         "z0_rmse_mm": 0.0,
+        "loss_charge": 0.0,
+        "charge_acc": 0.0,
     }
 
     n_batches = 0
@@ -460,6 +462,7 @@ def main():
                     "val/phi_mae_rad": val_logs["phi_mae_rad"],
                     "val/phi_rmse_rad": val_logs["phi_rmse_rad"],
                     "val/pt_rel_rmse": val_logs["pt_rel_rmse"],
+                    "val/charge_acc": val_logs["charge_acc"],
 
                     "best_val_loss": best_val_loss,
                     "best_val_phi_loss": best_val_phi_loss,
@@ -478,7 +481,8 @@ def main():
                 f"val eta {val_logs['loss_eta']:.6f} | "
                 f"val phi {val_logs['loss_phi']:.6f} | "
                 f"phi RMSE {val_logs['phi_rmse_rad']:.6f} rad | "
-                f"pT res {val_logs['pt_rel_rmse']:.4f}"
+                f"pT res {val_logs['pt_rel_rmse']:.4f} | "
+                f"charge acc {val_logs['charge_acc']:.4f}"
             )
 
         Path("checkpoints").mkdir(exist_ok=True)
