@@ -29,8 +29,10 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.metrics import roc_auc_score
 import torch
 import wandb
+from sklearn.metrics import roc_auc_score
 
 from colliderml_electron.dataset import make_loader, TARGET_COLS
 from colliderml_electron.model import ConcatCaloRegressor, ConvCaloRegressor
@@ -144,10 +146,10 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-    checkpoint_path = Path("checkpoints/ruche/ruche_Jun23_singlePhi.pt")
+    checkpoint_path = Path("checkpoints/ruche/ruche_Jun23_singlePhi_z0Slice.pt")
     parquet_path = Path("data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet")
     stats_path = Path("data/electrons/eta_phi_pt_z0_charge/target_stats.json")
-    output_dir = Path("results/ruche/Jun23_singlePhi")
+    output_dir = Path("results/ruche/Jun23_singlePhi_z0Slice")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -203,8 +205,35 @@ def main():
     pred_z0 = pred_norm[:, 3] * z0_std + z0_mean               # normalized -> mm
     charge_logit = pred_norm[:, 4]
     pred_charge = np.where(charge_logit > 0, +1, -1)           # predicted charge
+    p_pos = 1.0 / (1.0 + np.exp(-charge_logit))                # P(positron) = sigmoid(logit)
+    confidence = np.abs(charge_logit)                          # |logit| = how sure
     charge_acc = float(np.mean(pred_charge == charge))
-    print(f"\ncharge accuracy (calo-only): {charge_acc:.4f}  n={len(charge)}")                 # normalized -> mm (beamspot-anchored)                        # anchor + predicted Δz0 [mm]            
+    print(f"\ncharge accuracy (calo-only): {charge_acc:.4f}  n={len(charge)}")
+
+    # per-class accuracy (Z->ee is ~balanced; confirm no sign bias)
+    y = (charge > 0).astype(int)                               # 1 = positron truth
+    yhat = (pred_charge > 0).astype(int)
+    tp = int(np.sum((yhat == 1) & (y == 1))); tn = int(np.sum((yhat == 0) & (y == 0)))
+    fp = int(np.sum((yhat == 1) & (y == 0))); fn = int(np.sum((yhat == 0) & (y == 1)))
+    # --- calo-only charge ID vs pT: the bend handle (Δφ ∝ qBL/pT) fades with pT ---
+    print("\n pT bin [GeV]    acc     mean|logit|     n")
+    for lo, hi_edge in [(0, 2), (2, 5), (5, 10), (10, 20), (20, 50), (50, 1e9)]:
+        m = (true_pt >= lo) & (true_pt < hi_edge)
+        if m.any():
+            acc = float(np.mean(pred_charge[m] == charge[m]))
+            conf = float(np.mean(confidence[m]))
+            print(f"[{lo:>4.0f},{hi_edge:<6.0f})  {acc:.4f}    {conf:8.3f}   {int(m.sum())}")
+        # --- calibration: is the logit a real probability? ---
+    pc = np.maximum(p_pos, 1.0 - p_pos)                        # confidence in the chosen class
+    print("\n conf bin     emp.acc     n")
+    for lo, hi_edge in [(0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.01)]:
+        m = (pc >= lo) & (pc < hi_edge)
+        if m.any():
+            acc = float(np.mean(pred_charge[m] == charge[m]))
+            print(f"[{lo:.1f},{hi_edge:.1f})    {acc:.4f}   {int(m.sum())}")
+    print(f"confusion: TP={tp} TN={tn} FP={fp} FN={fn}")
+    if (tn + fp) > 0: print(f"electron acc = {tn / (tn + fp):.4f}")
+    if (tp + fn) > 0: print(f"positron acc = {tp / (tp + fn):.4f}")               # anchor + predicted Δz0 [mm]            
 
     # ---- decode truth ----
     true_eta = target_norm[:, 0] * eta_std + eta_mean
@@ -290,6 +319,8 @@ def main():
         "test/z0_bias_mm": float(np.mean(z0_residual)),
         "test/z0_anchor_rmse_mm": float(np.sqrt(np.mean((z0_anchor - true_z0)**2))),
         "test/z0_prior_rmse_mm": float(np.sqrt(np.mean((z0_mean - true_z0) ** 2))),
+        "test/charge_acc": float(np.mean(pred_charge == charge)),
+    "test/charge_auc": float(roc_auc_score((charge > 0).astype(int), p_pos)),
     }
 
     print("\nz0 resolution by |eta| region:")
