@@ -239,7 +239,7 @@ def evaluate(
 def main():
     config = {
         "architecture": "concat_transformer_eta_phi_pt_z0_charge",
-        "high_level_dim": 41,
+        "high_level_dim": 21,
         "max_abs_eta": 3,
         "use_angular_features": True,
         "use_cluster_features": True,
