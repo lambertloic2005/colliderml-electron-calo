@@ -146,10 +146,10 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-    checkpoint_path = Path("checkpoints/ruche/ruche_Jun23_singlePhi_z0Slice.pt")
+    checkpoint_path = Path("checkpoints/ruche/ruche_Jun23_ConstChargeWeight.pt")
     parquet_path = Path("data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet")
     stats_path = Path("data/electrons/eta_phi_pt_z0_charge/target_stats.json")
-    output_dir = Path("results/ruche/Jun23_singlePhi_z0Slice")
+    output_dir = Path("results/ruche/Jun23_ConstChargeWeight")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -225,7 +225,7 @@ def main():
     print(f"confusion: TP={tp} TN={tn} FP={fp} FN={fn}")
     if (tn + fp) > 0: print(f"electron acc = {tn / (tn + fp):.4f}")
     if (tp + fn) > 0: print(f"positron acc = {tp / (tp + fn):.4f}")
-    
+
     true_z0 = target_norm[:, 3] * z0_std + z0_mean
     # Anchor-only baselines: what you'd get with the model head outputting zero.
     # The trained model must beat these, otherwise the head is learning nothing.
@@ -284,6 +284,72 @@ def main():
     plt.tight_layout()
     plt.savefig(output_dir / "residuals_phi_by_charge.png", dpi=150)
     plt.close()
+
+    # ============== charge classifier performance plots ==============
+    y_true = (charge > 0).astype(int)          # 1 = positron
+    p_pos = 1.0 / (1.0 + np.exp(-charge_logit)) # ensure defined here too
+
+    # (1) logit distribution separated by truth charge -- the raw separation
+    plt.figure(figsize=(7, 5))
+    lo, hi = np.percentile(charge_logit, [1, 99])
+    lbins = np.linspace(lo, hi, 60)
+    plt.hist(charge_logit[charge == -1], bins=lbins, alpha=0.6, label="electron (q=-1)")
+    plt.hist(charge_logit[charge == +1], bins=lbins, alpha=0.6, label="positron (q=+1)")
+    plt.axvline(0.0, color="k", ls="--", lw=1, label="decision boundary")
+    plt.xlabel("charge logit  (>0 => predict positron)"); plt.ylabel("Count"); plt.legend()
+    plt.title("Charge logit separated by truth charge")
+    plt.tight_layout(); plt.savefig(output_dir / "charge_logit_by_truth.png", dpi=150); plt.close()
+
+    # (2) ROC curve -- threshold-free separation, area = charge_auc
+    thr = np.sort(np.unique(charge_logit))
+    P = max(int(np.sum(y_true == 1)), 1); N = max(int(np.sum(y_true == 0)), 1)
+    tpr = np.array([np.sum((charge_logit >= t) & (y_true == 1)) / P for t in thr])
+    fpr = np.array([np.sum((charge_logit >= t) & (y_true == 0)) / N for t in thr])
+    auc = float(np.trapz(np.sort(tpr), np.sort(fpr)))  # matches roc_auc_score up to rounding
+    plt.figure(figsize=(6, 6))
+    plt.plot(fpr, tpr, lw=2, label=f"ROC (AUC = {auc:.3f})")
+    plt.plot([0, 1], [0, 1], ls="--", color="grey", label="chance")
+    plt.xlabel("False positive rate"); plt.ylabel("True positive rate")
+    plt.title("Charge ROC (positron = positive)"); plt.legend()
+    plt.tight_layout(); plt.savefig(output_dir / "charge_roc.png", dpi=150); plt.close()
+
+    # (3) accuracy vs pT, with per-event mean confidence on the SAME [0.5,1] axis.
+    # Both curves now in probability units, so any gap = genuine miscalibration,
+    # not an axis artifact. confidence = P(chosen class) = max(p_pos, 1-p_pos).
+    pc_all = np.maximum(p_pos, 1.0 - p_pos)
+    edges = np.array([0, 2, 5, 10, 20, 50, 100, 1e9])
+    centers, accs, confs = [], [], []
+    for k in range(len(edges) - 1):
+        m = (true_pt >= edges[k]) & (true_pt < edges[k + 1])
+        if m.sum() >= 10:
+            centers.append(np.median(true_pt[m]))
+            accs.append(float(np.mean(pred_charge[m] == charge[m])))
+            confs.append(float(np.mean(pc_all[m])))            # mean per-event confidence
+    plt.figure(figsize=(7, 5))
+    plt.semilogx(centers, accs, "o-", color="C0", label="accuracy")
+    plt.semilogx(centers, confs, "s--", color="C1", alpha=0.8, label="mean confidence")
+    plt.axhline(0.5, color="grey", ls="--", lw=1, label="chance")
+    plt.xlabel("true pT [GeV]"); plt.ylabel("probability")
+    plt.ylim(0.45, 1.0)
+    plt.title("Calo-only charge ID vs pT")
+    plt.legend(loc="upper right")
+    plt.tight_layout(); plt.savefig(output_dir / "charge_acc_vs_pt.png", dpi=150); plt.close()
+
+    # (4) reliability / calibration -- does p=0.8 mean right 80% of the time?
+    pc = np.maximum(p_pos, 1.0 - p_pos)        # confidence in the chosen class
+    cbins = np.linspace(0.5, 1.0, 6)
+    bx, by = [], []
+    for k in range(len(cbins) - 1):
+        m = (pc >= cbins[k]) & (pc < cbins[k + 1])
+        if m.sum() >= 10:
+            bx.append(0.5 * (cbins[k] + cbins[k + 1]))
+            by.append(float(np.mean(pred_charge[m] == charge[m])))
+    plt.figure(figsize=(6, 6))
+    plt.plot(bx, by, "o-", label="observed")
+    plt.plot([0.5, 1.0], [0.5, 1.0], ls="--", color="grey", label="perfect calibration")
+    plt.xlabel("predicted confidence"); plt.ylabel("empirical accuracy")
+    plt.title("Charge calibration"); plt.legend()
+    plt.tight_layout(); plt.savefig(output_dir / "charge_calibration.png", dpi=150); plt.close()
 
     metrics = {
         "test/eta_mae": float(np.mean(np.abs(eta_residual))),
