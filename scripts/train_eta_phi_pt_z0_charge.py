@@ -77,6 +77,7 @@ class KinematicLoss(nn.Module):
         phi_weight: float = 1.0,
         logpt_weight: float = 1.0,
         z0_weight: float = 1.0,
+        charge_weight: float = 1.0,
     ):
         super().__init__()
 
@@ -120,8 +121,11 @@ class KinematicLoss(nn.Module):
         self.logpt_weight = logpt_weight
         self.z0_weight = z0_weight
 
-        # learned per-task log-sigma for uncertainty weighting (eta, phi, logpt, z0, charge)
-        self.log_sigma = nn.Parameter(torch.zeros(5))
+        # learned per-task log-sigma for the 4 REGRESSION tasks (eta, phi, logpt, z0).
+        # Charge is a classification (BCE) task and does NOT share the Gaussian-noise
+        # assumption the homoscedastic scheme is derived for, so it is weighted manually.
+        self.log_sigma = nn.Parameter(torch.zeros(4))
+        self.charge_weight = charge_weight
 
     def forward(self, pred, target, phi_centroid, eta_centroid, log_sum_et,
                 z0_anchor, truth_charge):
@@ -153,12 +157,12 @@ class KinematicLoss(nn.Module):
         charge_label = (truth_charge > 0).float()
         charge_loss = F.binary_cross_entropy_with_logits(charge_logit, charge_label)
 
-        # Homoscedastic uncertainty weighting over 5 tasks. This is exactly the
-        # mechanism that lets a BCE term and Huber terms (very different scales)
-        # coexist without hand-tuned weights.
-        task_losses = torch.stack([eta_loss, phi_loss, logpt_loss, z0_loss, charge_loss])
+        # Homoscedastic weighting over the 4 REGRESSION tasks only.
+        reg_losses = torch.stack([eta_loss, phi_loss, logpt_loss, z0_loss])
         precision = torch.exp(-2.0 * self.log_sigma)
-        total_loss = (precision * task_losses + self.log_sigma).sum()
+        total_loss = (precision * reg_losses + self.log_sigma).sum()
+        # Charge added with a fixed weight so its gradient cannot be suppressed.
+        total_loss = total_loss + self.charge_weight * charge_loss
 
         # diagnostics: phi is now decoded WITHOUT any truth charge
         pred_phi = phi_centroid + pred_dphi

@@ -202,7 +202,14 @@ def main():
     pred_phi = wrap_phi(phi_centroid + pred_norm[:, 1])         # charge-free, no truth used
     pred_logpt = log_sum_et + pred_norm[:, 2]                   # anchor + predicted Δln pT
     pred_pt = np.exp(pred_logpt)                                # GeV
-    pred_z0 = pred_norm[:, 3] * z0_std + z0_mean               # normalized -> mm
+    pred_z0 = pred_norm[:, 3] * z0_std + z0_mean          
+
+    # ---- decode truth ----
+    true_eta = target_norm[:, 0] * eta_std + eta_mean
+    true_phi = wrap_phi(target_norm[:, 1] * phi_std + phi_mean)
+    true_logpt = target_norm[:, 2] * logpt_std + logpt_mean
+    true_pt = np.exp(true_logpt)
+
     charge_logit = pred_norm[:, 4]
     pred_charge = np.where(charge_logit > 0, +1, -1)           # predicted charge
     p_pos = 1.0 / (1.0 + np.exp(-charge_logit))                # P(positron) = sigmoid(logit)
@@ -215,31 +222,10 @@ def main():
     yhat = (pred_charge > 0).astype(int)
     tp = int(np.sum((yhat == 1) & (y == 1))); tn = int(np.sum((yhat == 0) & (y == 0)))
     fp = int(np.sum((yhat == 1) & (y == 0))); fn = int(np.sum((yhat == 0) & (y == 1)))
-    # --- calo-only charge ID vs pT: the bend handle (Δφ ∝ qBL/pT) fades with pT ---
-    print("\n pT bin [GeV]    acc     mean|logit|     n")
-    for lo, hi_edge in [(0, 2), (2, 5), (5, 10), (10, 20), (20, 50), (50, 1e9)]:
-        m = (true_pt >= lo) & (true_pt < hi_edge)
-        if m.any():
-            acc = float(np.mean(pred_charge[m] == charge[m]))
-            conf = float(np.mean(confidence[m]))
-            print(f"[{lo:>4.0f},{hi_edge:<6.0f})  {acc:.4f}    {conf:8.3f}   {int(m.sum())}")
-        # --- calibration: is the logit a real probability? ---
-    pc = np.maximum(p_pos, 1.0 - p_pos)                        # confidence in the chosen class
-    print("\n conf bin     emp.acc     n")
-    for lo, hi_edge in [(0.5, 0.6), (0.6, 0.7), (0.7, 0.8), (0.8, 0.9), (0.9, 1.01)]:
-        m = (pc >= lo) & (pc < hi_edge)
-        if m.any():
-            acc = float(np.mean(pred_charge[m] == charge[m]))
-            print(f"[{lo:.1f},{hi_edge:.1f})    {acc:.4f}   {int(m.sum())}")
     print(f"confusion: TP={tp} TN={tn} FP={fp} FN={fn}")
     if (tn + fp) > 0: print(f"electron acc = {tn / (tn + fp):.4f}")
-    if (tp + fn) > 0: print(f"positron acc = {tp / (tp + fn):.4f}")               # anchor + predicted Δz0 [mm]            
-
-    # ---- decode truth ----
-    true_eta = target_norm[:, 0] * eta_std + eta_mean
-    true_phi = wrap_phi(target_norm[:, 1] * phi_std + phi_mean)
-    true_logpt = target_norm[:, 2] * logpt_std + logpt_mean
-    true_pt = np.exp(true_logpt)
+    if (tp + fn) > 0: print(f"positron acc = {tp / (tp + fn):.4f}")
+    
     true_z0 = target_norm[:, 3] * z0_std + z0_mean
     # Anchor-only baselines: what you'd get with the model head outputting zero.
     # The trained model must beat these, otherwise the head is learning nothing.
