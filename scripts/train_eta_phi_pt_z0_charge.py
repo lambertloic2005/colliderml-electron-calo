@@ -271,6 +271,7 @@ def main():
         "phi_weight": 1.0,
         "logpt_weight": 1.0,
         "z0_weight": 1.0,
+        "charge_weight": 1.0,
 
         "log_freq_batches": 10,
         "watch_gradients": False,
@@ -349,6 +350,7 @@ def main():
             phi_weight=cfg["phi_weight"],
             logpt_weight=cfg["logpt_weight"],
             z0_weight=cfg.get("z0_weight", 1.0),
+            charge_weight=cfg.get("charge_weight", 1.0),
         ).to(device)
 
         optimizer = torch.optim.AdamW(
