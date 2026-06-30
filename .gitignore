@@ -51,3 +51,7 @@ wandb/
 
 # Model checkpoints
 checkpoints/
+
+# Claude Code local-only config
+CLAUDE.local.md
+.claude/settings.local.json

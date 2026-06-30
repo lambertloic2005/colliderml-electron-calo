@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "default",
+    "disableBypassPermissionsMode": "disable",
+    "allow": [
+      "Bash(pwd)",
+      "Bash(ls *)",
+      "Bash(git status)",
+      "Bash(git branch --show-current)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(python --version)",
+      "Bash(python -m py_compile *)",
+      "Bash(python scripts/check_dims.py *)"
+    ],
+    "ask": [
+      "Bash(python scripts/train_*)",
+      "Bash(python scripts/test_*)",
+      "Bash(python -m colliderml_electron.stats *)",
+      "Bash(python -m pip install *)",
+      "Bash(pip install *)",
+      "Bash(sbatch *)",
+      "Bash(scancel *)",
+      "Bash(rsync *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git switch *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)",
+      "Bash(git pull *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Read(./**/.env.*)",
+      "Read(./**/*.parquet)",
+      "Read(./**/*.npz)",
+      "Read(./**/*.pt)",
+      "Read(./**/*.pth)",
+      "Read(./**/*.ckpt)",
+      "Read(./wandb/**)",
+      "Read(./runs/**/wandb/**)",
+      "Read(./.git/**)",
+      "Bash(sudo *)",
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -fd *)",
+      "Bash(git clean -fdx *)",
+      "Bash(curl * | bash)",
+      "Bash(wget * | bash)"
+    ]
+  }
+}

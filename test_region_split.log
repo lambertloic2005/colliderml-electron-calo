@@ -1,0 +1,112 @@
+Using device: mps
+acceptance cut |truth_eta| <= 3: kept 4479/4967
+/Users/loiclambert/code/colliderml-electron-calo/.venv/lib/python3.11/site-packages/torch/nn/modules/transformer.py:286: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  warnings.warn(f"enable_nested_tensor is True, but self.use_nested_tensor is False because {why_not_sparsity_fast_path}")
+
+charge accuracy (calo-only): 0.7229  n=4479
+confusion: TP=1659 TN=1579 FP=643 FN=598
+electron acc = 0.7106
+positron acc = 0.7350
+anchor-only eta  std: 0.10947
+anchor-only phi  std: 0.19517 rad
+anchor-only lnpt std: 0.50979
+anchor-only z0   std: 1866.59 mm
+beamspot prior   std: 55.71 mm (z0 RMS with no model at all)
+
+z0 filtered sample: predicted z0 outside [-10,+10] mm
+ kept 2131/4479 events (47.6%)
+ filtered z0 RMSE: 42.17 mm
+ filtered z0 MAE: 31.78 mm
+ filtered z0 bias: +0.62 mm
+ filtered anchor RMSE: 1796.48 mm
+
+Worst 10 pt_rel offenders (true_pt, pred_pt, rel_err):
+  true=   0.066 GeV  pred=   0.387 GeV  rel=+4.90
+  true=   0.107 GeV  pred=   0.565 GeV  rel=+4.28
+  true=   0.056 GeV  pred=   0.272 GeV  rel=+3.85
+  true=   0.076 GeV  pred=   0.356 GeV  rel=+3.67
+  true=   0.078 GeV  pred=   0.343 GeV  rel=+3.39
+  true=   0.154 GeV  pred=   0.653 GeV  rel=+3.24
+  true=   0.107 GeV  pred=   0.446 GeV  rel=+3.16
+  true=  11.451 GeV  pred=  47.201 GeV  rel=+3.12
+  true=   0.479 GeV  pred=   1.918 GeV  rel=+3.00
+  true=   0.164 GeV  pred=   0.603 GeV  rel=+2.68
+
+pt_rel error by true-pT bin:
+  [  0,    2) GeV: n=  173  rel_rmse=1.141  rel_mae=0.761
+  [  2,    5) GeV: n=   98  rel_rmse=0.319  rel_mae=0.200
+  [  5,   10) GeV: n=  203  rel_rmse=0.225  rel_mae=0.081
+  [ 10,   30) GeV: n= 1488  rel_rmse=0.152  rel_mae=0.050
+  [ 30,1000000000.0) GeV: n= 2517  rel_rmse=0.083  rel_mae=0.032
+phi residual (q=-1): mean=+0.02095 rad  std=0.20624 rad  n=2222
+phi residual (q=+1): mean=-0.02155 rad  std=0.18236 rad  n=2257
+
+z0 resolution by |eta| region:
+  |eta| [0.0,1.2) barrel : n= 1958  rmse=  38.7 mm  prior=  55.1 mm
+  |eta| [1.2,2.5) endcap : n= 1920  rmse=  56.1 mm  prior=  56.1 mm
+  |eta| [2.5,99) fwd    : n=  601  rmse=  56.2 mm  prior=  56.4 mm
+
+charge accuracy by true-pT bin:
+  [   0, 2    ) GeV : acc=0.4971  n=173
+  [   2, 5    ) GeV : acc=0.7041  n=98
+  [   5, 10   ) GeV : acc=0.7734  n=203
+  [  10, 30   ) GeV : acc=0.7560  n=1488
+  [  30, 1000000000) GeV : acc=0.7155  n=2517
+phi (charge-free, no truth used): sigma~0.19573 rad  [headline]
+eta  sigma=0.019029       tail=2.79%
+phi  sigma=0.011717 rad   tail=10.56%
+pT   sigma=3.0210% (frac)  tail=9.71%
+
+Test metrics:
+eta MAE:        0.022947
+eta RMSE:       0.082889
+eta bias:       0.000701
+phi MAE rad:    0.037731
+phi RMSE rad:   0.195729
+phi bias rad:   -0.000468
+pT rel MAE:     7.2046%
+pT rel RMSE:    25.7679%
+pT rel bias:    1.2976%
+pT abs RMSE:    3.3576 GeV
+
+Per-region resolution (truth-eta split):
+  barrel : n= 2411  z0_sigma=  38.5 mm (prior  54.5)  phi_sigma=0.0113 rad  eta_sigma=0.0209  pt_sigma=3.161%
+  endcap : n= 2068  z0_sigma=  56.8 mm (prior  57.1)  phi_sigma=0.0122 rad  eta_sigma=0.0171  pt_sigma=2.894%
+  fwd    : n=0 (skipped, too few)
+
+Saved plots to: results/ruche/Jun23_ConstChargeWeight
+Saved metrics to: results/ruche/Jun23_ConstChargeWeight/test_metrics.json
+wandb: Tracking run with wandb version 0.27.0
+wandb: W&B syncing is set to `offline` in this directory. Run `wandb online` or set WANDB_MODE=online to enable cloud syncing.
+wandb: Run data is saved locally in /Users/loiclambert/code/colliderml-electron-calo/wandb/offline-run-20260630_104906-xgid3aer
+wandb: WARNING Symlinked 1 file into the W&B run directory; call wandb.save again to sync new files.
+wandb: 
+wandb: Run history:
+wandb:    test/charge_acc ▁
+wandb:    test/charge_auc ▁
+wandb:      test/eta_bias ▁
+wandb:  test/eta_bias_fit ▁
+wandb:       test/eta_mae ▁
+wandb:      test/eta_rmse ▁
+wandb:     test/eta_sigma ▁
+wandb: test/eta_tail_frac ▁
+wandb:    test/logpt_bias ▁
+wandb:    test/logpt_rmse ▁
+wandb:                +53 ...
+wandb: 
+wandb: Run summary:
+wandb:    test/charge_acc 0.72293
+wandb:    test/charge_auc 0.81642
+wandb:      test/eta_bias 0.0007
+wandb:  test/eta_bias_fit -0.00017
+wandb:       test/eta_mae 0.02295
+wandb:      test/eta_rmse 0.08289
+wandb:     test/eta_sigma 0.01903
+wandb: test/eta_tail_frac 0.02791
+wandb:    test/logpt_bias -0.01357
+wandb:    test/logpt_rmse 0.26739
+wandb:                +53 ...
+wandb: 
+wandb: You can sync this run to the cloud by running:
+wandb: wandb sync /Users/loiclambert/code/colliderml-electron-calo/wandb/offline-run-20260630_104906-xgid3aer
+wandb: Find logs at: ./wandb/offline-run-20260630_104906-xgid3aer/logs
