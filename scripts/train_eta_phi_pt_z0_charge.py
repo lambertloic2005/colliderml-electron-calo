@@ -1,4 +1,6 @@
 import json
+import os
+
 from pathlib import Path
 
 import torch
@@ -316,6 +318,7 @@ def main():
             use_angular_features=cfg["use_angular_features"],
             use_cluster_features=cfg["use_cluster_features"],
             max_abs_eta=cfg.get("max_abs_eta"),
+            min_abs_eta=cfg.get("min_abs_eta")
         )
 
         val_loader = make_loader(
@@ -327,6 +330,7 @@ def main():
             use_angular_features=cfg["use_angular_features"],
             use_cluster_features=cfg["use_cluster_features"],
             max_abs_eta=cfg.get("max_abs_eta"),
+            min_abs_eta=cfg.get("min_abs_eta")
         )
 
         common = dict(
@@ -532,4 +536,17 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    def main():
+        REGION = os.environ.get("REGION", "barrel")
+        _REGION_ETA = {
+            "barrel": dict(min_abs_eta=None, max_abs_eta=1.7),
+            "endcap": dict(min_abs_eta=1.3,  max_abs_eta=3),
+        }
+        if REGION not in _REGION_ETA:
+            raise ValueError(f"REGION must be 'barrel' or 'endcap', got {REGION!r}")
+
+        config = {
+            "region": REGION,
+            "max_abs_eta": _REGION_ETA[REGION]["max_abs_eta"],
+            "min_abs_eta": _REGION_ETA[REGION]["min_abs_eta"],
+        }

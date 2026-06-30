@@ -33,8 +33,9 @@ echo "========================================"
 # ============================================================
 
 CONDA_ENV_NAME="colliderml"
+REGION="${REGION:-barrel}"
 
-RUN_NAME="eta_phi_pt_z0_charge"
+RUN_NAME="eta_phi_pt_z0_charge_${REGION}_$(date +%Y%m%d_%H%M%S)"
 
 TRAIN_SCRIPT="scripts/train_eta_phi_pt_z0_charge.py"
 TEST_SCRIPT="scripts/test_eta_phi_pt_z0_charge.py"

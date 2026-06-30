@@ -170,6 +170,7 @@ def main():
         use_angular_features=True,
         use_cluster_features=config.get("use_cluster_features", False),
         max_abs_eta=config.get("max_abs_eta"),
+        min_abs_eta=config.get("min_abs_eta"),
     )
 
     common = dict(
@@ -304,6 +305,8 @@ def main():
     )
     if config.get("max_abs_eta") is not None:
         charge_df = charge_df.filter(pl.col("truth_eta").abs() <= config["max_abs_eta"])
+    if config.get("min_abs_eta") is not None:
+        charge_df = charge_df.filter(pl.col("truth_eta").abs() >= config["min_abs_eta"])
     charge = charge_df["truth_charge"].to_numpy()
     assert len(charge) == len(phi_residual), "charge/residual length mismatch"
     for q in (-1, +1):
@@ -489,8 +492,8 @@ def main():
     # Set from scripts/diagnose_detector_regions.py; default matches the old
     # by-|eta| print block. The diagnostic is truth-eta-labelled; predicted eta
     # (sigma ~ 0.019) would route just as well at inference.
-    BARREL_ETA_MAX = 1.2
-    ENDCAP_ETA_MAX = 2.5
+    BARREL_ETA_MAX = 1.5
+    ENDCAP_ETA_MAX = 3.0
     REGIONS = [
         ("barrel", 0.0,            BARREL_ETA_MAX),
         ("endcap", BARREL_ETA_MAX, ENDCAP_ETA_MAX),

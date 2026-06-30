@@ -38,6 +38,7 @@ class ElectronDataset(Dataset):
         use_angular_features: bool = False,
         use_cluster_features: bool = False,
         max_abs_eta: float | None = None,
+        min_abs_eta: float | None = None,
     ):
         df = pl.read_parquet(parquet_path)
 
@@ -45,10 +46,13 @@ class ElectronDataset(Dataset):
             df = df.filter(pl.col("split") == split)
 
         if max_abs_eta is not None:
-            n_before = df.height
+            n0 = df.height
             df = df.filter(pl.col("truth_eta").abs() <= max_abs_eta)
-            print(f"acceptance cut |truth_eta| <= {max_abs_eta}: "
-                  f"kept {df.height}/{n_before}")
+            print(f"acceptance cut |truth_eta| <= {max_abs_eta}: {n0} -> {df.height}")
+        if min_abs_eta is not None:
+            n0 = df.height
+            df = df.filter(pl.col("truth_eta").abs() >= min_abs_eta)
+            print(f"acceptance cut |truth_eta| >= {min_abs_eta}: {n0} -> {df.height}")
 
         self.df = df
         self.use_angular_features = use_angular_features
@@ -272,6 +276,7 @@ def make_loader(
     use_angular_features: bool = False,
     use_cluster_features: bool = False,
     max_abs_eta: float | None = None,
+    min_abs_eta: float | None = None,
 ) -> DataLoader:
     ds = ElectronDataset(
         parquet_path,
@@ -280,6 +285,7 @@ def make_loader(
         use_angular_features=use_angular_features,
         use_cluster_features=use_cluster_features,
         max_abs_eta=max_abs_eta,
+        min_abs_eta=min_abs_eta
     )
 
     return DataLoader(
