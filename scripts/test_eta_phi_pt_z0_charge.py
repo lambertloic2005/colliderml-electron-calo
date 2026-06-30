@@ -244,6 +244,41 @@ def main():
     # by low-pT electrons the way the linear relative residual is.
     logpt_residual = pred_logpt - true_logpt
     z0_residual = pred_z0 - true_z0
+
+        # ---- z0 diagnostic excluding central model guesses ----
+    # This keeps only events where the MODEL PREDICTION is outside [-10, +10] mm.
+    z0_outside_center = (pred_z0 < -10.0) | (pred_z0 > 10.0)
+
+    true_z0_out = true_z0[z0_outside_center]
+    pred_z0_out = pred_z0[z0_outside_center]
+    z0_residual_out = z0_residual[z0_outside_center]
+    z0_anchor_out = z0_anchor[z0_outside_center]
+
+    np.savez(
+        output_dir / "preds.npz",
+        truth_pt=true_pt, truth_eta=true_eta, truth_phi=true_phi,
+        pred_eta=pred_eta, pred_phi=pred_phi, pred_pt=pred_pt,
+        # optional anchor-baseline overlay (these names already exist in your decode):
+        eta_anchor=eta_centroid, phi_anchor=phi_centroid, pt_anchor=np.exp(log_sum_et),
+    )
+
+    print("\nz0 filtered sample: predicted z0 outside [-10,+10] mm")
+    print(
+        f" kept {int(z0_outside_center.sum())}/{len(z0_outside_center)} events "
+        f"({100.0 * z0_outside_center.mean():.1f}%)"
+    )
+
+    if z0_outside_center.any():
+        print(f" filtered z0 RMSE: {np.sqrt(np.mean(z0_residual_out**2)):.2f} mm")
+        print(f" filtered z0 MAE: {np.mean(np.abs(z0_residual_out)):.2f} mm")
+        print(f" filtered z0 bias: {np.mean(z0_residual_out):+.2f} mm")
+        print(
+            f" filtered anchor RMSE: "
+            f"{np.sqrt(np.mean((z0_anchor_out - true_z0_out)**2)):.2f} mm"
+        )
+    else:
+        print(" no events passed the filtered z0 cut")
+    
     PT_FLOOR_GEV = 5.0
     hi = true_pt >= PT_FLOOR_GEV
     pt_rel_hi = pt_rel_residual[hi]
@@ -372,9 +407,27 @@ def main():
         "test/z0_anchor_rmse_mm": float(np.sqrt(np.mean((z0_anchor - true_z0)**2))),
         "test/z0_prior_rmse_mm": float(np.sqrt(np.mean((z0_mean - true_z0) ** 2))),
         "test/charge_acc": float(np.mean(pred_charge == charge)),
-    "test/charge_auc": float(roc_auc_score((charge > 0).astype(int), p_pos)),
+        "test/charge_auc": float(roc_auc_score((charge > 0).astype(int), p_pos)),
     }
+    if z0_outside_center.any():
+        z0_out_fit = gaussian_resolution(z0_residual_out, wrap=False)
 
+        metrics.update({
+            "test/z0_outside_pm10_n": int(z0_outside_center.sum()),
+            "test/z0_outside_pm10_frac": float(z0_outside_center.mean()),
+
+            "test/z0_outside_pm10_rmse_mm": float(np.sqrt(np.mean(z0_residual_out**2))),
+            "test/z0_outside_pm10_mae_mm": float(np.mean(np.abs(z0_residual_out))),
+            "test/z0_outside_pm10_bias_mm": float(np.mean(z0_residual_out)),
+
+            "test/z0_outside_pm10_sigma_mm": z0_out_fit.sigma,
+            "test/z0_outside_pm10_bias_fit_mm": z0_out_fit.mu,
+            "test/z0_outside_pm10_tail_frac": z0_out_fit.tail_fraction,
+
+            "test/z0_outside_pm10_anchor_rmse_mm": float(
+                np.sqrt(np.mean((z0_anchor_out - true_z0_out) ** 2))
+            ),
+        })
     print("\nz0 resolution by |eta| region:")
     for lo, hi_e, label in [(0.0, 1.2, "barrel"), (1.2, 2.5, "endcap"), (2.5, 99, "fwd")]:
         m = (np.abs(true_eta) >= lo) & (np.abs(true_eta) < hi_e)
@@ -432,6 +485,66 @@ def main():
     print(f"pT rel bias:    {metrics['test/pt_rel_bias']:.4%}")
     print(f"pT abs RMSE:    {metrics['test/pt_abs_rmse_gev']:.4f} GeV")
 
+    # ================= per-region (barrel / endcap) breakdown =================
+    # Set from scripts/diagnose_detector_regions.py; default matches the old
+    # by-|eta| print block. The diagnostic is truth-eta-labelled; predicted eta
+    # (sigma ~ 0.019) would route just as well at inference.
+    BARREL_ETA_MAX = 1.2
+    ENDCAP_ETA_MAX = 2.5
+    REGIONS = [
+        ("barrel", 0.0,            BARREL_ETA_MAX),
+        ("endcap", BARREL_ETA_MAX, ENDCAP_ETA_MAX),
+        ("fwd",    ENDCAP_ETA_MAX, 99.0),
+    ]
+
+    def _auc(scores, pos):  # threshold-free, no sklearn dependency
+        pos = np.asarray(pos, dtype=bool)
+        n_pos, n_neg = int(pos.sum()), int((~pos).sum())
+        if n_pos == 0 or n_neg == 0:
+            return float("nan")
+        order = np.argsort(scores, kind="mergesort")
+        ranks = np.empty(len(scores), dtype=np.float64)
+        ranks[order] = np.arange(1, len(scores) + 1)
+        return (ranks[pos].sum() - n_pos * (n_pos + 1) / 2.0) / (n_pos * n_neg)
+
+    abs_eta = np.abs(true_eta)
+    print("\nPer-region resolution (truth-eta split):")
+    for label, lo, hi in REGIONS:
+        m = (abs_eta >= lo) & (abs_eta < hi)
+        n = int(m.sum())
+        metrics[f"test/region/{label}/n"] = n
+        if n < 50:                      # guard against empty / tiny bins
+            print(f"  {label:7s}: n={n} (skipped, too few)")
+            continue
+
+        eta_f = gaussian_resolution(eta_residual[m], wrap=False)
+        phi_f = gaussian_resolution(phi_residual[m], wrap=True)
+        pt_f  = gaussian_resolution(pt_rel_residual[m], wrap=False)
+        z0_f  = gaussian_resolution(z0_residual[m], wrap=False)
+
+        metrics[f"test/region/{label}/eta_sigma"]     = eta_f.sigma
+        metrics[f"test/region/{label}/phi_sigma_rad"] = phi_f.sigma
+        metrics[f"test/region/{label}/pt_sigma_rel"]  = pt_f.sigma
+        metrics[f"test/region/{label}/z0_sigma_mm"]   = z0_f.sigma
+        metrics[f"test/region/{label}/z0_rmse_mm"]    = float(np.sqrt(np.mean(z0_residual[m] ** 2)))
+        metrics[f"test/region/{label}/z0_prior_mm"]   = float(np.std(true_z0[m]))
+
+        # charge ID per region -- only if your current script defines `charge`
+        # (truth, in {-1,+1}) and the charge logit. Rename `charge_logit` to your
+        # variable. Delete this `if` block if you don't have a charge head here.
+        if "charge_logit" in dir() and charge is not None:
+            metrics[f"test/region/{label}/charge_auc"] = float(_auc(charge_logit[m], charge[m] > 0))
+            metrics[f"test/region/{label}/charge_acc"] = float(np.mean((charge_logit[m] > 0) == (charge[m] > 0)))
+
+        print(f"  {label:7s}: n={n:5d}  z0_sigma={z0_f.sigma:6.1f} mm "
+              f"(prior {np.std(true_z0[m]):5.1f})  phi_sigma={phi_f.sigma:.4f} rad  "
+              f"eta_sigma={eta_f.sigma:.4f}  pt_sigma={pt_f.sigma:.3%}")
+
+        # per-region z0 plots (z0 is where region geometry matters most)
+        plot_expected_vs_predicted(true_z0[m], pred_z0[m], f"z0_{label}", output_dir, unit="mm")
+        plot_residuals(z0_residual[m], f"z0_{label}", output_dir, unit="mm", wrap=False)
+    # ==========================================================================
+    
     plot_paths = [
         plot_expected_vs_predicted(true_eta, pred_eta, "eta", output_dir),
         plot_expected_vs_predicted(true_phi, pred_phi, "phi", output_dir, unit="rad"),
@@ -442,7 +555,23 @@ def main():
         plot_residuals(pt_rel_residual, "pt_rel", output_dir, unit="", wrap=False),
         plot_residuals(z0_residual, "z0", output_dir, unit="mm", wrap=False),   # NEW
     ]
-    
+    if z0_outside_center.any():
+        plot_paths.extend([
+            plot_expected_vs_predicted(
+                true_z0_out,
+                pred_z0_out,
+                "z0_pred_outside_pm10",
+                output_dir,
+                unit="mm",
+            ),
+            plot_residuals(
+                z0_residual_out,
+                "z0_pred_outside_pm10",
+                output_dir,
+                unit="mm",
+                wrap=False,
+            ),
+        ])
     metrics_path = output_dir / "test_metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2))
 
