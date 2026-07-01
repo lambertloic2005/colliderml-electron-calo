@@ -47,6 +47,8 @@ def prompt_electrons(particles_row: dict) -> list[dict]:
     pz = np.asarray(particles_row["pz"])
     energy = np.asarray(particles_row["energy"])
     vz = np.asarray(particles_row["vz"])
+    vx = np.asarray(particles_row["vx"])
+    vy = np.asarray(particles_row["vy"])
     mask = (np.abs(pdg) == 11) & primary & (vp == 1)
     return [
         {
@@ -57,6 +59,8 @@ def prompt_electrons(particles_row: dict) -> list[dict]:
             "pz": float(pz[i]),
             "energy": float(energy[i]),
             "vz": float(vz[i]),
+            "vx": float(vx[i]),
+            "vy": float(vy[i]),
         }
         for i in np.where(mask)[0]
     ]

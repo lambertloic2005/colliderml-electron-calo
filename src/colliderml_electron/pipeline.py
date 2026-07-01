@@ -30,6 +30,7 @@ def truth_kinematics(electron: dict) -> dict:
     pt = float(np.sqrt(px**2 + py**2))
     eta, phi = momentum_to_eta_phi(px, py, pz)
     charge = -int(np.sign(electron["pdg_id"])) # pdg_id = +11 -> electron, =-11 -> positron
+    d0=float(electron["vx"]*np.sin(phi)-electron["vy"]*np.cos(phi))
     return {
         "truth_energy": float(electron["energy"]),
         "truth_px": float(px),
@@ -42,6 +43,7 @@ def truth_kinematics(electron: dict) -> dict:
         "truth_phi": float(phi),
         "truth_charge": charge,
         "truth_z0": float(electron["vz"]),
+        "truth_d0": float(d0),
     }
 
 def build_electron_row(

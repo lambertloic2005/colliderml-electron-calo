@@ -37,8 +37,8 @@ REGION="${REGION:-barrel}"
 
 RUN_NAME="eta_phi_pt_z0_charge_${REGION}_$(date +%Y%m%d_%H%M%S)"
 
-TRAIN_SCRIPT="scripts/train_eta_phi_pt_z0_charge.py"
-TEST_SCRIPT="scripts/test_eta_phi_pt_z0_charge.py"
+TRAIN_SCRIPT="scripts/train_all.py"
+TEST_SCRIPT="scripts/test_all.py"
 
 # Folder where sbatch was submitted from.
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
@@ -291,6 +291,7 @@ required_columns = {
     "truth_phi",
     "truth_log_pt",
     "truth_z0",
+    "truth_d0",
     "truth_charge",
 
     "cell_x",
@@ -311,6 +312,7 @@ required_stats = {
     "truth_phi",
     "truth_log_pt",
     "truth_z0",
+    "truth_d0",
 }
 
 df_head = pl.read_parquet(parquet_path, n_rows=1)

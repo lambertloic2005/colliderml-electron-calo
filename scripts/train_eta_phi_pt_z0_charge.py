@@ -253,7 +253,7 @@ def main():
 
     config = {
         "architecture": "concat_transformer_eta_phi_pt_z0_charge",
-        "high_level_dim": 41,
+        "high_level_dim": 42,
         "region": REGION,
         "max_abs_eta": _REGION_ETA[REGION]["max_abs_eta"],
         "min_abs_eta": _REGION_ETA[REGION]["min_abs_eta"],

@@ -37,12 +37,15 @@ except Exception:                      # standalone fallback (e.g. local testing
         return (r + np.pi) % (2 * np.pi) - np.pi
 
     class _Fit:
-        def __init__(self, sigma):
+        def __init__(self, sigma, n_core, n_total):
             self.sigma = sigma
+            self.n_core = n_core
+            self.n_total = n_total
 
     def gaussian_resolution(residuals, n_sigma=3.0, max_iter=100, wrap=False):
         r = np.asarray(residuals, float)
         r = r[np.isfinite(r)]
+        n_total = r.size
         if wrap:
             r = _wrap(r)
         core = r
@@ -54,7 +57,8 @@ except Exception:                      # standalone fallback (e.g. local testing
             if keep.all():
                 break
             core = core[keep]
-        return _Fit(float(core.std()) if core.size else float("nan"))
+        sigma = float(core.std()) if core.size else float("nan")
+        return _Fit(sigma, int(core.size), int(n_total))
 
 
 def load(path, cols):
@@ -76,27 +80,73 @@ def log_edges(pt, n_bins):
     return np.logspace(np.log10(max(pt.min(), 1e-3)), np.log10(pt.max()), n_bins + 1)
 
 
-def sigma_in_bins(pt, residual, edges, wrap):
-    centers, sig, counts = [], [], []
+def sigma_in_bins(pt, residual, edges, wrap, min_count=50):
+    """Core resolution per pT bin, with a minimum-count guard.
+
+    Returns (idx, centers, sigma, sigma_err, counts) over SURVIVING bins only.
+    `idx` is the index into `edges` of each surviving bin, so the caller can
+    tell which bins were dropped and avoid drawing a connecting line across the
+    gap (the sparse-/empty-bin interpolation artifact David flagged).
+
+    A bin is kept only if it holds at least `min_count` electrons AND the core
+    fit returns a finite, positive sigma. sigma_err is the standard error on a
+    Gaussian sigma, sigma / sqrt(2 * n_core).
+    """
+    idx, centers, sig, err, counts = [], [], [], [], []
     for i in range(len(edges) - 1):
         hi = edges[i + 1]
         m = (pt >= edges[i]) & (pt <= hi if i == len(edges) - 2 else pt < hi)
         n = int(m.sum())
-        if n < 20:                       # need enough for a stable core fit
+        if n < min_count:                 # not enough electrons for a stable fit
             continue
         fit = gaussian_resolution(residual[m], wrap=wrap)
+        if not np.isfinite(fit.sigma) or fit.sigma <= 0:
+            continue
+        n_core = int(getattr(fit, "n_core", n))
+        idx.append(i)
         centers.append(np.sqrt(edges[i] * hi))
         sig.append(fit.sigma)
+        err.append(fit.sigma / np.sqrt(2 * max(n_core, 1)))
         counts.append(n)
-    return np.asarray(centers), np.asarray(sig), counts
+    return (np.asarray(idx, dtype=int), np.asarray(centers),
+            np.asarray(sig), np.asarray(err), counts)
 
 
-def panel(ax, pt, res_model, res_base, edges, wrap, ylabel, title):
-    c, s, n = sigma_in_bins(pt, res_model, edges, wrap)
-    ax.plot(c, s, "o-", lw=1.5, label="model")
+def _contiguous_runs(idx):
+    """Yield slices [a:b] over positions where edge-indices `idx` are consecutive."""
+    if len(idx) == 0:
+        return
+    start = 0
+    for k in range(1, len(idx)):
+        if idx[k] != idx[k - 1] + 1:
+            yield slice(start, k)
+            start = k
+    yield slice(start, len(idx))
+
+
+def plot_resolution_series(ax, idx, centers, sig, err, *, color=None,
+                           marker="o", linestyle="-", label=None):
+    """Plot sigma vs pT with error bars, connecting ONLY adjacent bins.
+
+    Every surviving bin gets an error-bar marker; the connecting line is broken
+    wherever a bin was dropped by the min-count guard, so the eye never
+    interpolates a resolution across a gap that holds no (trustworthy) data.
+    """
+    ax.errorbar(centers, sig, yerr=err, fmt=marker, color=color,
+                ms=4, capsize=2, lw=0, elinewidth=1, label=label)
+    for sl in _contiguous_runs(idx):
+        if sl.stop - sl.start >= 2:
+            ax.plot(centers[sl], sig[sl], linestyle=linestyle, color=color, lw=1.5)
+
+
+def panel(ax, pt, res_model, res_base, edges, wrap, ylabel, title, min_count=50):
+    idx, c, s, e, n = sigma_in_bins(pt, res_model, edges, wrap, min_count)
+    plot_resolution_series(ax, idx, c, s, e, color="C0", marker="o",
+                           linestyle="-", label="model")
     if res_base is not None:
-        cb, sb, _ = sigma_in_bins(pt, res_base, edges, wrap)
-        ax.plot(cb, sb, "s--", color="grey", lw=1.3, label="anchor baseline")
+        bidx, cb, sb, eb, _ = sigma_in_bins(pt, res_base, edges, wrap, min_count)
+        plot_resolution_series(ax, bidx, cb, sb, eb, color="grey", marker="s",
+                               linestyle="--", label="anchor baseline")
     ax.set_xscale("log")
     ax.set_xlabel("true pT [GeV]")
     ax.set_ylabel(ylabel)
@@ -112,6 +162,10 @@ def main():
     ap.add_argument("--out-dir", default="results/resolution")
     ap.add_argument("--n-bins", type=int, default=8)
     ap.add_argument("--bins", choices=["quantile", "log"], default="quantile")
+    ap.add_argument("--min-count", type=int, default=50,
+                    help="drop pT bins holding fewer than this many electrons; "
+                         "the connecting line is broken at the resulting gaps so "
+                         "no resolution is interpolated across sparse bins")
     ap.add_argument("--split-eta", type=float, default=None,
                     help="if set, plot barrel (|eta|<S) vs endcap (|eta|>=S) "
                          "instead of the anchor-baseline overlay")
@@ -152,7 +206,7 @@ def main():
     if args.split_eta is None:
         # original behaviour: model vs anchor baseline, all eta combined
         for ax, (res_m, res_b, wrap, ylab, title) in zip(axes, panels):
-            panel(ax, pt, res_m, res_b, edges, wrap, ylab, title)
+            panel(ax, pt, res_m, res_b, edges, wrap, ylab, title, args.min_count)
         fname = "resolution_vs_pt.png"
     else:
         # barrel vs endcap (model only), shared pT bins for comparability
@@ -160,10 +214,13 @@ def main():
         regions = [(f"barrel |eta|<{args.split_eta:g}", barrel),
                    (f"endcap |eta|>={args.split_eta:g}", ~barrel)]
         for ax, (res_m, _b, wrap, ylab, title) in zip(axes, panels):
-            for label, sel in regions:
-                c, s, n = sigma_in_bins(pt[sel], res_m[sel], edges, wrap)
+            for ci, (label, sel) in enumerate(regions):
+                idx, c, s, e, n = sigma_in_bins(pt[sel], res_m[sel], edges, wrap,
+                                                args.min_count)
                 if c.size:
-                    ax.plot(c, s, "o-", lw=1.5, label=f"{label} (n={sum(n)})")
+                    plot_resolution_series(ax, idx, c, s, e, color=f"C{ci}",
+                                           marker="o", linestyle="-",
+                                           label=f"{label} (n={sum(n)})")
             ax.set_xscale("log")
             ax.set_xlabel("true pT [GeV]")
             ax.set_ylabel(ylab)
