@@ -293,7 +293,6 @@ required_columns = {
     "truth_phi",
     "truth_log_pt",
     "truth_z0",
-    "truth_d0",
     "truth_charge",
 
     "cell_x",
@@ -314,7 +313,6 @@ required_stats = {
     "truth_phi",
     "truth_log_pt",
     "truth_z0",
-    "truth_d0",
 }
 
 df_head = pl.read_parquet(parquet_path, n_rows=1)
@@ -373,7 +371,7 @@ python scripts/check_dims.py \
     --parquet data/electrons/electrons.parquet \
     --stats  data/electrons/target_stats.json \
     --high-level-dim 42 --output-dim 5
-    
+
 # ============================================================
 # Train
 # ============================================================
