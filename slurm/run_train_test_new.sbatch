@@ -35,10 +35,12 @@ echo "========================================"
 CONDA_ENV_NAME="colliderml"
 REGION="${REGION:-barrel}"
 
+export REGION="${REGION:-barrel}"
+
 RUN_NAME="eta_phi_pt_z0_charge_${REGION}_$(date +%Y%m%d_%H%M%S)"
 
-TRAIN_SCRIPT="scripts/train_all.py"
-TEST_SCRIPT="scripts/test_all.py"
+TRAIN_SCRIPT="scripts/train_eta_phi_pt_z0_charge.py"
+TEST_SCRIPT="scripts/test_eta_phi_pt_z0_charge.py"
 
 # Folder where sbatch was submitted from.
 PROJECT_DIR="${SLURM_SUBMIT_DIR:-$PWD}"
@@ -364,6 +366,14 @@ for split in ["train", "val", "test"]:
 print("Preflight validation passed.")
 PY
 
+echo "========================================"
+echo "Dimension preflight (must emit high_level width = 42)"
+echo "========================================"
+python scripts/check_dims.py \
+    --parquet data/electrons/electrons.parquet \
+    --stats  data/electrons/target_stats.json \
+    --high-level-dim 42 --output-dim 5
+    
 # ============================================================
 # Train
 # ============================================================
