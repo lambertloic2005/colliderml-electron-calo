@@ -1,7 +1,8 @@
-"""PLAN B: sharpen the charge-curvature observable before deciding to retrain.
+"""
+PLAN B: sharpen the charge-curvature observable before deciding to retrain.
 
 The Step-0 dphi/dr slope was weak (~0.58-0.64) and its per-slice curves were
-jagged. Two physics-motivated reasons it may be UNDER-summarizing a real signal:
+jagged. One physics-motivated reason it may be UNDER-summarizing a real signal:
 
   1. WRONG DEPTH COORDINATE BY REGION. A shower's "depth" runs along r in the
      BARREL (develops radially outward at ~fixed z) but along |z| in the ENDCAP
@@ -10,16 +11,10 @@ jagged. Two physics-motivated reasons it may be UNDER-summarizing a real signal:
      ADAPTIVE slope that uses whichever of {r,|z|} has the larger (weighted)
      spread for that electron, and we split every result by barrel/endcap.
 
-  2. A LINEAR SLOPE MAY BE A POOR SUMMARY of a curved, jagged profile. We test
-     (a) an inner-vs-outer <dphi> endpoint difference (robust to mid-slice
-     scatter) and (b) a Fisher linear discriminant fit on the FULL 6-slice
-     <dphi> profile (train/test split) -- the ceiling of what a linear readout
-     of the profile can do, which is what the model actually receives.
-
-All model-free. Decision: if dphi/d|z| (endcap) or the adaptive slope or the
-profile-LDA clears the Step-0 dphi/dr baseline by a clear margin, put the
-BETTER observable in the model. If nothing beats ~0.6, the charge signal here is
-genuinely weak and the model's ~0.78 comes from elsewhere.
+All model-free. Decision: if dphi/d|z| (endcap) or the adaptive slope clears the
+Step-0 dphi/dr baseline by a clear margin, put the BETTER observable in the model.
+If nothing beats ~0.6, the charge signal here is genuinely weak and the model's
+~0.78 comes from elsewhere.
 
 Run:
   python scripts/diagnose_charge_curvature_pathB.py \
@@ -74,23 +69,6 @@ def slice_profile(depth, dphi, w, K):
     return prof
 
 
-def inner_outer(prof):
-    """Outer-third minus inner-third mean <dphi> (endpoint contrast)."""
-    K = prof.size; t = max(K // 3, 1)
-    return float(prof[-t:].mean() - prof[:t].mean())
-
-
-def fisher_lda(X, y, ridge=1e-6):
-    """Fit Fisher LDA direction on (X,y in {-1,+1}); return w, b."""
-    Xp, Xn = X[y > 0], X[y < 0]
-    mp, mn = Xp.mean(0), Xn.mean(0)
-    Sw = np.cov(Xp.T) * (len(Xp) - 1) + np.cov(Xn.T) * (len(Xn) - 1)
-    Sw += ridge * np.eye(X.shape[1])
-    w = np.linalg.solve(Sw, mp - mn)
-    b = -0.5 * (mp + mn) @ w
-    return w, b
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--parquet", required=True)
@@ -122,7 +100,6 @@ def main():
 
     pt, ae, charge = [], [], []
     s_r, s_z, s_ad = [], [], []
-    io_ad = []
     prof_ad = []
     for row in df.iter_rows(named=True):
         e = np.clip(np.asarray(row[TOT_COL], np.float64), 0, None)
@@ -147,11 +124,11 @@ def main():
         pt.append(float(row["truth_pt"])); ae.append(abs(float(row["truth_eta"])))
         charge.append(int(row["truth_charge"]))
         s_r.append(sr); s_z.append(sz); s_ad.append(sad)
-        io_ad.append(inner_outer(prof)); prof_ad.append(prof)
+        prof_ad.append(prof)
 
     pt = np.asarray(pt); ae = np.asarray(ae); charge = np.asarray(charge)
     s_r = np.asarray(s_r); s_z = np.asarray(s_z); s_ad = np.asarray(s_ad)
-    io_ad = np.asarray(io_ad); prof_ad = np.asarray(prof_ad)
+    prof_ad = np.asarray(prof_ad)
     n = pt.size
     barrel = ae <= args.barrel_endcap; endcap = ae > args.barrel_endcap
 
@@ -162,37 +139,20 @@ def main():
         corr = np.sign(np.mean(np.sign(s[m]) * c[m])) or 1.0
         return float(np.mean((corr * np.sign(s[m])) == c[m]))
 
-    # profile-LDA with a train/test split (avoid in-sample optimism)
-    rng = np.random.default_rng(args.seed)
-    idx = rng.permutation(n); half = n // 2
-    tr, te = idx[:half], idx[half:]
-    Xtr, ytr = np.nan_to_num(prof_ad[tr]), charge[tr]
-    w_lda, b_lda = fisher_lda(Xtr, ytr)
-    score_lda = np.nan_to_num(prof_ad) @ w_lda + b_lda
-    # calibrate sign on train, evaluate on test subsets
-    corr_lda = np.sign(np.mean(np.sign(score_lda[tr]) * charge[tr])) or 1.0
-
-    def lda_acc(sel_mask):
-        sel = np.intersect1d(te, np.nonzero(sel_mask)[0])
-        if sel.size == 0:
-            return np.nan
-        return float(np.mean((corr_lda * np.sign(score_lda[sel])) == charge[sel]))
-
     allm = np.ones(n, bool)
     methods = [
         ("dphi/dr", s_r), ("dphi/d|z|", s_z), ("adaptive slope", s_ad),
-        ("inner-outer", io_ad),
     ]
 
-    fig, axes = plt.subplots(2, 3, figsize=(17, 9.5))
+    fig, axes = plt.subplots(2, 2, figsize=(12, 9.5))
     fig.suptitle(f"PLAN B: sharpening the charge-curvature observable  "
                  f"(model-free, {args.split}, n={n})", fontsize=12)
 
-    # (a) overall accuracy by method (+ LDA)
+    # (a) overall accuracy by method
     ax = axes[0, 0]
-    names = [m[0] for m in methods] + ["profile-LDA"]
-    vals = [sign_acc(s, allm) for _, s in methods] + [lda_acc(allm)]
-    ax.bar(names, vals, color=["C0", "C1", "C2", "C3", "C4"])
+    names = [m[0] for m in methods]
+    vals = [sign_acc(s, allm) for _, s in methods]
+    ax.bar(names, vals, color=["C0", "C1", "C2"])
     ax.axhline(0.5, color="grey", ls="--", lw=1)
     ax.set_ylim(0.45, max(0.75, np.nanmax(vals) + 0.05))
     ax.set_ylabel("charge accuracy"); ax.set_title("(a) Overall, by method", fontsize=10)
@@ -209,46 +169,36 @@ def main():
     ax.set_ylim(0.45, 0.85); ax.set_ylabel("charge accuracy")
     ax.set_title("(b) Depth coordinate x region", fontsize=10); ax.legend(fontsize=8)
 
-    # (c) accuracy vs pT for the best of {adaptive, LDA}
-    ax = axes[0, 2]
+    # (c) accuracy vs pT for adaptive slope
+    ax = axes[1, 0]
     edges = np.logspace(np.log10(max(pt.min(), 1e-3)), np.log10(pt.max()), 8)
-    c_ad, c_ld = [], []; cc = []
+    c_ad = []; cc = []
     for i in range(len(edges) - 1):
         m = (pt >= edges[i]) & (pt < edges[i + 1])
         if m.sum() < 50:
             continue
         cc.append(np.sqrt(edges[i] * edges[i + 1]))
-        c_ad.append(sign_acc(s_ad, m)); c_ld.append(lda_acc(m))
+        c_ad.append(sign_acc(s_ad, m))
     ax.plot(cc, c_ad, "o-", color="C2", label="adaptive slope")
-    ax.plot(cc, c_ld, "s--", color="C4", label="profile-LDA")
     ax.axhline(0.5, color="grey", ls="--", lw=1)
     ax.set_xscale("log"); ax.set_ylim(0.45, 0.85)
     ax.set_xlabel("true $p_T$ [GeV]"); ax.set_ylabel("charge accuracy")
-    ax.set_title("(c) Best observables vs pT", fontsize=10); ax.legend(fontsize=8)
+    ax.set_title("(c) Adaptive observable vs pT", fontsize=10); ax.legend(fontsize=8)
 
-    # (d,e) per-slice <dphi> by charge, barrel then endcap (adaptive depth)
+    # (d) per-slice <dphi> by charge, barrel then endcap (adaptive depth)
+    ax = axes[1, 1]
     sl = np.arange(1, K + 1)
-    for ax, mask, title in [(axes[1, 0], barrel, "(d) Profile by charge — BARREL"),
-                            (axes[1, 1], endcap, "(e) Profile by charge — ENDCAP")]:
+    for mask, ls, title in [(barrel, "-", "BARREL"),
+                            (endcap, "--", "ENDCAP")]:
         for q, col, lab in [(-1, "C0", "e- (q=-1)"), (+1, "C3", "e+ (q=+1)")]:
             sub = prof_ad[mask & (charge == q)]
             if sub.size:
-                ax.plot(sl, np.nanmean(sub, axis=0), "o-", color=col, label=lab)
-        ax.axhline(0, color="grey", ls=":", lw=1)
-        ax.set_xlabel("radial/depth slice (inner->outer)")
-        ax.set_ylabel("mean $\\langle\\Delta\\phi\\rangle$ [rad]")
-        ax.set_title(title, fontsize=10); ax.legend(fontsize=8)
-
-    # (f) profile-LDA score distribution by charge (test set)
-    ax = axes[1, 2]
-    stest = score_lda[te]; ctest = charge[te]
-    rng2 = np.nanpercentile(stest, [1, 99])
-    bins = np.linspace(rng2[0], rng2[1], 50)
-    ax.hist(stest[ctest < 0], bins=bins, alpha=0.6, color="C0", label="e- (q=-1)")
-    ax.hist(stest[ctest > 0], bins=bins, alpha=0.6, color="C3", label="e+ (q=+1)")
-    ax.axvline(0, color="grey", ls="--", lw=1)
-    ax.set_xlabel("LDA score on <dphi> profile"); ax.set_ylabel("electrons / bin")
-    ax.set_title("(f) Profile-LDA separation (test)", fontsize=10); ax.legend(fontsize=8)
+                ax.plot(sl, np.nanmean(sub, axis=0), "o", ls=ls, color=col,
+                        label=f"{lab}, {title}")
+    ax.axhline(0, color="grey", ls=":", lw=1)
+    ax.set_xlabel("radial/depth slice (inner->outer)")
+    ax.set_ylabel("mean $\\langle\\Delta\\phi\\rangle$ [rad]")
+    ax.set_title("(d) Profile by charge and region", fontsize=10); ax.legend(fontsize=8)
 
     fig.tight_layout(rect=(0, 0, 1, 0.95))
     fp = out / "charge_curvature_pathB.png"
@@ -260,9 +210,8 @@ def main():
     print("method            overall   barrel   endcap")
     for name, s in methods:
         print(f"  {name:<15} {sign_acc(s,allm):.3f}    {sign_acc(s,barrel):.3f}    {sign_acc(s,endcap):.3f}")
-    print(f"  {'profile-LDA':<15} {lda_acc(allm):.3f}    {lda_acc(barrel):.3f}    {lda_acc(endcap):.3f}")
     print("\nbaseline to beat: Step-0 dphi/dr ~ 0.58-0.64.")
-    print("if dphi/d|z| (endcap) or adaptive or profile-LDA clears that clearly,")
+    print("if dphi/d|z| (endcap) or adaptive clears that clearly,")
     print("put THAT observable in the model instead of the bare dphi/dr slope.")
     print(f"saved {fp}")
 
