@@ -257,6 +257,7 @@ def main():
         "region": REGION,
         "max_abs_eta": _REGION_ETA[REGION]["max_abs_eta"],
         "min_abs_eta": _REGION_ETA[REGION]["min_abs_eta"],
+        "min_pt": 10.0,
         "use_angular_features": True,
         "use_cluster_features": True,
         "dataset": "colliderml_release1_zee_prompt_electrons",
@@ -328,7 +329,8 @@ def main():
             use_angular_features=cfg["use_angular_features"],
             use_cluster_features=cfg["use_cluster_features"],
             max_abs_eta=cfg.get("max_abs_eta"),
-            min_abs_eta=cfg.get("min_abs_eta")
+            min_abs_eta=cfg.get("min_abs_eta"),
+            min_pt=cfg.get("min_pt"),
         )
 
         val_loader = make_loader(
@@ -340,7 +342,8 @@ def main():
             use_angular_features=cfg["use_angular_features"],
             use_cluster_features=cfg["use_cluster_features"],
             max_abs_eta=cfg.get("max_abs_eta"),
-            min_abs_eta=cfg.get("min_abs_eta")
+            min_abs_eta=cfg.get("min_abs_eta"),
+            min_pt=cfg.get("min_pt"),
         )
 
         common = dict(

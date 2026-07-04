@@ -171,6 +171,7 @@ def main():
         use_cluster_features=config.get("use_cluster_features", False),
         max_abs_eta=config.get("max_abs_eta"),
         min_abs_eta=config.get("min_abs_eta"),
+        min_pt=config.get("min_pt"),
     )
 
     common = dict(
@@ -300,13 +301,15 @@ def main():
 
     import polars as pl
     charge_df = (
-        pl.read_parquet(parquet_path, columns=["split", "truth_charge", "truth_eta"])
+        pl.read_parquet(parquet_path, columns=["split", "truth_charge", "truth_eta", "truth_log_pt"])
           .filter(pl.col("split") == "test")
     )
     if config.get("max_abs_eta") is not None:
         charge_df = charge_df.filter(pl.col("truth_eta").abs() <= config["max_abs_eta"])
     if config.get("min_abs_eta") is not None:
         charge_df = charge_df.filter(pl.col("truth_eta").abs() >= config["min_abs_eta"])
+    if config.get("min_pt") is not None:
+        charge_df = charge_df.filter(pl.col("truth_log_pt") >= float(np.log(config["min_pt"])))
     charge = charge_df["truth_charge"].to_numpy()
     assert len(charge) == len(phi_residual), "charge/residual length mismatch"
     for q in (-1, +1):
