@@ -1,552 +1,324 @@
+from __future__ import annotations
 import json
-import os
-
 from pathlib import Path
-
+import numpy as np
+import polars as pl
 import torch
-from torch import nn
-import torch.nn.functional as F
-import wandb
-
-from colliderml_electron.dataset import make_loader, TARGET_COLS
-from colliderml_electron.model import ConcatCaloRegressor, ConvCaloRegressor
-
-#HELLO WORLD
-ETA_INDEX = TARGET_COLS.index("truth_eta")
-PHI_INDEX = TARGET_COLS.index("truth_phi")
-LOGPT_INDEX = TARGET_COLS.index("truth_log_pt")
-Z0_INDEX = TARGET_COLS.index("truth_z0")
+from torch.utils.data import Dataset, DataLoader
 
 
-def get_device() -> torch.device:
-    if torch.backends.mps.is_available():
-        return torch.device("mps")
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    return torch.device("cpu")
+use_angular_features: bool = True
+
+# Detector subsystem codes present in the full zee_pu200 data.
+DETECTOR_CODES = [9, 10, 11, 12, 13, 14]
+N_DETECTORS = len(DETECTOR_CODES)
+
+TARGET_COLS = [
+    "truth_energy", "truth_px", "truth_py", "truth_pz",
+    "truth_eta", "truth_phi", "truth_log_pt", "truth_z0",
+]
 
 
-def move_batch_to_device(batch: dict, device: torch.device) -> dict:
-    return {
-        key: value.to(device) if torch.is_tensor(value) else value
-        for key, value in batch.items()
-    }
+def _one_hot_detector(det: np.ndarray) -> np.ndarray:
+    """Map integer detector codes to one-hot rows of shape (n_cells, N_DETECTORS)."""
+    out = np.zeros((len(det), N_DETECTORS), dtype=np.float32)
+    for i, code in enumerate(DETECTOR_CODES):
+        out[:, i] = (det == code).astype(np.float32)
+    return out
 
 
-def compute_grad_norm(model: nn.Module) -> float:
-    norms = [
-        p.grad.detach().norm(2)
-        for p in model.parameters()
-        if p.grad is not None
-    ]
-
-    if len(norms) == 0:
-        return 0.0
-
-    return torch.norm(torch.stack(norms), 2).item()
-
-
-def wrapped_angle_delta(pred_phi: torch.Tensor, true_phi: torch.Tensor) -> torch.Tensor:
-    """
-    Compute pred_phi - true_phi while respecting angular wraparound.
-
-    This matters because phi = +pi and phi = -pi are physically close.
-    """
-    delta = pred_phi - true_phi
-    return torch.atan2(torch.sin(delta), torch.cos(delta))
-
-
-class KinematicLoss(nn.Module):
-    """
-    Loss for eta, phi (cos/sin) and log pT.
-
-    The model outputs four values:
-
-        [normalized_eta, phi_cos, phi_sin, normalized_log_pt]
-
-    - eta:    ordinary MSE in normalized space
-    - phi:    the target phi is denormalized to radians, mapped to (cos, sin)
-              on the unit circle, and the model's (phi_cos, phi_sin) are pulled
-              toward it.  ((cos-c)^2 + (sin-s)^2 = 2(1 - cosΔ).)
-    - log_pt: ordinary MSE in normalized space.  The residual in un-normalized
-              ln(pT) is reported as pt_rel_rmse, i.e. ~ sigma(pT)/pT.
-    """
+class ElectronDataset(Dataset):
+    "One sample per prompt electron."
 
     def __init__(
         self,
-        target_stats_path: str | Path,
-        eta_weight: float = 1.0,
-        phi_weight: float = 1.0,
-        logpt_weight: float = 1.0,
-        z0_weight: float = 1.0,
-        charge_weight: float = 1.0,
+        parquet_path: str | Path,
+        split: str | None = None,
+        target_stats_path: str | Path | None = None,
+        use_angular_features: bool = False,
+        use_cluster_features: bool = False,
+        max_abs_eta: float | None = None,
+        min_abs_eta: float | None = None,
+        min_pt: float | None = None,
     ):
-        super().__init__()
+        df = pl.read_parquet(parquet_path)
 
-        stats = json.loads(Path(target_stats_path).read_text())
+        if split is not None:
+            df = df.filter(pl.col("split") == split)
 
-        self.register_buffer(
-            "eta_mean",
-            torch.tensor(stats["truth_eta"]["mean"], dtype=torch.float32),
-        )
-        self.register_buffer(
-            "eta_std",
-            torch.tensor(stats["truth_eta"]["std"], dtype=torch.float32),
-        )
-        self.register_buffer(
-            "phi_mean",
-            torch.tensor(stats["truth_phi"]["mean"], dtype=torch.float32),
-        )
-        self.register_buffer(
-            "phi_std",
-            torch.tensor(stats["truth_phi"]["std"], dtype=torch.float32),
-        )
-        self.register_buffer(
-            "logpt_mean",
-            torch.tensor(stats["truth_log_pt"]["mean"], dtype=torch.float32),
-        )
-        self.register_buffer(
-            "logpt_std",
-            torch.tensor(stats["truth_log_pt"]["std"], dtype=torch.float32),
-        )
-        self.register_buffer(
-            "z0_mean",
-            torch.tensor(stats["truth_z0"]["mean"], dtype=torch.float32),
-        )
-        self.register_buffer(
-            "z0_std",
-            torch.tensor(stats["truth_z0"]["std"], dtype=torch.float32),
-        )
+        if max_abs_eta is not None:
+            n0 = df.height
+            df = df.filter(pl.col("truth_eta").abs() <= max_abs_eta)
+            print(f"acceptance cut |truth_eta| <= {max_abs_eta}: {n0} -> {df.height}")
+        if min_abs_eta is not None:
+            n0 = df.height
+            df = df.filter(pl.col("truth_eta").abs() >= min_abs_eta)
+            print(f"acceptance cut |truth_eta| >= {min_abs_eta}: {n0} -> {df.height}")
+        if min_pt is not None:
+            n0 = df.height
+            df = df.filter(pl.col("truth_log_pt").exp() >= min_pt)
+            print(f"acceptance cut pT >= {min_pt}: {n0} -> {df.height}")
 
-        self.eta_weight = eta_weight
-        self.phi_weight = phi_weight
-        self.logpt_weight = logpt_weight
-        self.z0_weight = z0_weight
+        self.df = df
+        self.use_angular_features = use_angular_features
+        self.use_cluster_features = use_cluster_features
 
-        # learned per-task log-sigma for the 4 REGRESSION tasks (eta, phi, logpt, z0).
-        # Charge is a classification (BCE) task and does NOT share the Gaussian-noise
-        # assumption the homoscedastic scheme is derived for, so it is weighted manually.
-        self.log_sigma = nn.Parameter(torch.zeros(4))
-        self.charge_weight = charge_weight
+        self.stats = None
+        if target_stats_path is not None:
+            self.stats = json.loads(Path(target_stats_path).read_text())
 
-    def forward(self, pred, target, phi_centroid, eta_centroid, log_sum_et,
-                z0_anchor, truth_charge):
-        # pred: [delta_eta, delta_phi, delta_logpt, delta_z0, charge_logit]
-        # target: [eta_norm, phi_norm, logpt_norm, z0_norm] (z-scored, this order)
-        # truth_charge: (B,) in {-1, +1}; used ONLY as the classification label now.
-        pred_deta    = pred[:, 0]
-        pred_dphi    = pred[:, 1]      # single signed bend; its sign IS the charge handle
-        pred_dlogpt  = pred[:, 2]
-        pred_dz0     = pred[:, 3]
-        charge_logit = pred[:, 4]      # logit > 0 => predict positron (q = +1)
+    def __len__(self) -> int:
+        return self.df.height
 
-        target_eta   = target[:, 0] * self.eta_std + self.eta_mean
-        target_phi   = target[:, 1] * self.phi_std + self.phi_mean
-        target_logpt = target[:, 2] * self.logpt_std + self.logpt_mean
+    def __getitem__(self, idx: int) -> dict:
+        row = self.df.row(idx, named=True)
 
-        deta_target    = target_eta - eta_centroid
-        dphi_target    = wrapped_angle_delta(target_phi, phi_centroid)  # signed; sign = bend dir
-        dlogpt_target  = target_logpt - log_sum_et
-        z0_target_norm = target[:, 3]                                   # already z-scored
+        # x_sampled: positional coords for the Fourier embedding
+        x_sampled = np.stack([
+            np.asarray(row["cell_x"], dtype=np.float32),
+            np.asarray(row["cell_y"], dtype=np.float32),
+            np.asarray(row["cell_z"], dtype=np.float32),
+        ], axis=-1)  # (n_cells, 3)
 
-        eta_loss = F.huber_loss(pred_deta, deta_target, delta=0.1)
-        phi_err  = wrapped_angle_delta(pred_dphi, dphi_target)
-        phi_loss = F.huber_loss(phi_err, torch.zeros_like(phi_err), delta=0.05)
-        logpt_loss = F.huber_loss(pred_dlogpt, dlogpt_target, delta=0.2)
-        z0_loss = F.huber_loss(pred_dz0, z0_target_norm, delta=1.0)
+        # x_high_level: log-energy + optional angular features + detector one-hot
+        e_cal = np.asarray(row["cell_e_calibrated"], dtype=np.float32)
+        log_e = np.log(np.clip(e_cal, 1e-6, None))[:, None]
 
-        # charge: binary classification. label 1 = positron (q=+1), 0 = electron (q=-1)
-        charge_label = (truth_charge > 0).float()
-        charge_loss = F.binary_cross_entropy_with_logits(charge_logit, charge_label)
+        # --- energy-weighted anchors (over ALL cells, before any topk) ---
+        cell_phi_all = np.asarray(row["cell_phi"], dtype=np.float64)
+        cell_eta_all = np.asarray(row["cell_eta"], dtype=np.float64)
+        w = np.clip(e_cal.astype(np.float64), 1e-9, None)
+        phi_centroid = float(np.arctan2(
+            np.average(np.sin(cell_phi_all), weights=w),
+            np.average(np.cos(cell_phi_all), weights=w),
+        ))
+        eta_centroid = float(np.average(cell_eta_all, weights=w))
 
-        # Homoscedastic weighting over the 4 REGRESSION tasks only.
-        reg_losses = torch.stack([eta_loss, phi_loss, logpt_loss, z0_loss])
-        precision = torch.exp(-2.0 * self.log_sigma)
-        total_loss = (precision * reg_losses + self.log_sigma).sum()
-        # Charge added with a fixed weight so its gradient cannot be suppressed.
-        total_loss = total_loss + self.charge_weight * charge_loss
+        # --- canonical azimuthal frame: rotate event so the centroid sits at phi=0 ---
+        cos_o, sin_o = np.cos(phi_centroid), np.sin(phi_centroid)
+        x_rot = x_sampled[:, 0] * cos_o + x_sampled[:, 1] * sin_o
+        y_rot = -x_sampled[:, 0] * sin_o + x_sampled[:, 1] * cos_o
+        x_sampled = np.stack([x_rot, y_rot, x_sampled[:, 2]], axis=-1).astype(np.float32)
 
-        # diagnostics: phi is now decoded WITHOUT any truth charge
-        pred_phi = phi_centroid + pred_dphi
-        delta_phi = wrapped_angle_delta(pred_phi, target_phi)
-        d_lnpt = pred_dlogpt - dlogpt_target
-        dz0_err = (pred_dz0 - z0_target_norm) * self.z0_std            # back to mm
-        charge_acc = ((charge_logit > 0).float() == charge_label).float().mean()
+        det_oh = _one_hot_detector(np.asarray(row["cell_detector"]))
 
-        logs = {
-            "loss_total": total_loss.detach(),
-            "loss_eta": eta_loss.detach(),
-            "loss_phi": phi_loss.detach(),
-            "loss_logpt": logpt_loss.detach(),
-            "loss_z0": z0_loss.detach(),
-            "loss_charge": charge_loss.detach(),
-            "charge_acc": charge_acc.detach(),
-            "phi_mae_rad": delta_phi.abs().mean().detach(),
-            "phi_rmse_rad": torch.sqrt(torch.mean(delta_phi ** 2)).detach(),
-            "pt_rel_rmse": torch.sqrt(torch.mean(d_lnpt ** 2)).detach(),
-            "z0_rmse_mm": torch.sqrt(torch.mean(dz0_err ** 2)).detach(),
-        }
-        return total_loss, logs
-
-
-@torch.no_grad()
-def evaluate(
-    model: nn.Module,
-    loader,
-    loss_fn: KinematicLoss,
-    device: torch.device,
-) -> dict[str, float]:
-    model.eval()
-
-    totals = {
-        "loss_total": 0.0,
-        "loss_eta": 0.0,
-        "loss_phi": 0.0,
-        "loss_logpt": 0.0,
-        "loss_z0": 0.0,
-        "phi_mae_rad": 0.0,
-        "phi_rmse_rad": 0.0,
-        "pt_rel_rmse": 0.0,
-        "z0_rmse_mm": 0.0,
-        "loss_charge": 0.0,
-        "charge_acc": 0.0,
-    }
-
-    n_batches = 0
-
-    for batch in loader:
-        batch = move_batch_to_device(batch, device)
-
-        pred = model(
-            batch["x_sampled"],
-            batch["x_high_level"],
-            batch["mask"],
-        )
-
-        target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX, Z0_INDEX]]
-
-        loss, logs = loss_fn(
-            pred, target,
-            batch["phi_centroid"], batch["eta_centroid"], batch["log_sum_et"],
-            batch["z0_anchor"], batch["truth_charge"],
-        )
-
-        for key in totals:
-            totals[key] += logs[key].item()
-
-        n_batches += 1
-
-    return {
-        key: value / max(n_batches, 1)
-        for key, value in totals.items()
-    }
-
-
-def main():
-    REGION = os.environ.get("REGION", "barrel")
-    _REGION_ETA = {
-        "barrel": dict(min_abs_eta=None, max_abs_eta=1.7),
-        "endcap": dict(min_abs_eta=1.3,  max_abs_eta=3),
-    }
-    if REGION not in _REGION_ETA:
-        raise ValueError(f"REGION must be 'barrel' or 'endcap', got {REGION!r}")
-
-    config = {
-        "architecture": "concat_transformer_eta_phi_pt_z0_charge",
-        "high_level_dim": 42,
-        "region": REGION,
-        "max_abs_eta": _REGION_ETA[REGION]["max_abs_eta"],
-        "min_abs_eta": _REGION_ETA[REGION]["min_abs_eta"],
-        "min_pt": 10.0,
-        "use_angular_features": True,
-        "use_cluster_features": True,
-        "dataset": "colliderml_release1_zee_prompt_electrons",
-        "parquet_path": "data/electrons/electrons.parquet",
-        "target_stats_path": "data/electrons/target_stats.json",
-
-        "target_cols": ["truth_eta", "truth_phi", "truth_log_pt", "truth_z0"],
-
-        "max_cells": 128,
-        "model_dim": 128,
-        "n_heads": 4,
-        "n_layers": 3,
-        "dim_feedforward": 256,
-        "dropout": 0.1,
-        "output_dim": 5,
-
-        "batch_size": 64,
-        "n_epochs": 144,
-        "learning_rate": 3e-4,
-        "weight_decay": 1e-4,
-        "warmup_epochs": 3,
-
-        "eta_weight": 1.0,
-        "phi_weight": 1.0,
-        "logpt_weight": 1.0,
-        "z0_weight": 1.0,
-        "charge_weight": 1.0,
-
-        "log_freq_batches": 10,
-        "watch_gradients": False,
-
-        "model_type": "conv",
-        "conv_dim": 128,
-        "kernel_size": 5,
-
-        "feature_set": "xyz_loge_eta_phi_theta",
-    }
-
-    with wandb.init(
-        project="colliderml-electron-calo",
-        name="eta-phi-pt-z0",
-        job_type="training",
-        config=config,
-    ) as run:
-        cfg = run.config
-
-        device = get_device()
-        print(f"Using device: {device}")
-
-        parquet_path = Path(cfg["parquet_path"])
-        stats_path = Path(cfg["target_stats_path"])
-
-        if not parquet_path.exists():
-            raise FileNotFoundError(
-                f"Could not find {parquet_path}. Build the electron table first."
+        if self.use_angular_features:
+            cell_eta = np.asarray(row["cell_eta"], dtype=np.float32)[:, None]
+            dphi_cell = np.arctan2(
+                np.sin(cell_phi_all - phi_centroid),
+                np.cos(cell_phi_all - phi_centroid),
             )
+            sin_phi = np.sin(dphi_cell)[:, None].astype(np.float32)
+            cos_phi = np.cos(dphi_cell)[:, None].astype(np.float32)
 
-        if not stats_path.exists():
-            raise FileNotFoundError(
-                f"Could not find {stats_path}. Run the split/stat step first."
+            # theta / cos(theta) from the same xyz as x_sampled (coords.py convention)
+            cx = x_sampled[:, 0]; cy = x_sampled[:, 1]; cz = x_sampled[:, 2]
+            r3d = np.sqrt(cx * cx + cy * cy + cz * cz)
+            cos_theta = (cz / np.clip(r3d, 1e-9, None)).astype(np.float32)[:, None]
+            theta = np.arctan2(np.hypot(cx, cy), cz).astype(np.float32)[:, None]
+
+            x_high_level = np.concatenate(
+                [
+                    log_e,
+                    cell_eta,
+                    sin_phi,
+                    cos_phi,
+                    theta,
+                    cos_theta,
+                    det_oh,
+                ],
+                axis=-1,
             )
-
-        train_loader = make_loader(
-            parquet_path=parquet_path,
-            split="train",
-            target_stats_path=stats_path,
-            batch_size=cfg["batch_size"],
-            shuffle=True,
-            use_angular_features=cfg["use_angular_features"],
-            use_cluster_features=cfg["use_cluster_features"],
-            max_abs_eta=cfg.get("max_abs_eta"),
-            min_abs_eta=cfg.get("min_abs_eta"),
-            min_pt=cfg.get("min_pt"),
-        )
-
-        val_loader = make_loader(
-            parquet_path=parquet_path,
-            split="val",
-            target_stats_path=stats_path,
-            batch_size=cfg["batch_size"],
-            shuffle=False,
-            use_angular_features=cfg["use_angular_features"],
-            use_cluster_features=cfg["use_cluster_features"],
-            max_abs_eta=cfg.get("max_abs_eta"),
-            min_abs_eta=cfg.get("min_abs_eta"),
-            min_pt=cfg.get("min_pt"),
-        )
-
-        common = dict(
-            max_cells=cfg["max_cells"], model_dim=cfg["model_dim"],
-            n_heads=cfg["n_heads"], n_layers=cfg["n_layers"],
-            dim_feedforward=cfg["dim_feedforward"], dropout=cfg["dropout"],
-            output_dim=cfg["output_dim"], high_level_dim=cfg["high_level_dim"],
-        )
-        if cfg.get("model_type", "concat") == "conv":
-            model = ConvCaloRegressor(**common, conv_dim=cfg["conv_dim"],
-                                      kernel_size=cfg["kernel_size"]).to(device)
         else:
-            model = ConcatCaloRegressor(**common).to(device)
+            x_high_level = np.concatenate([log_e, det_oh], axis=-1)
 
-        if cfg["watch_gradients"]:
-            run.watch(model, log="gradients", log_freq=100)
+        # --- cluster-level scalars (over ALL cells, before any topk truncation),
+        # broadcast to every cell. Appended at the END so x_high_level[..., 0]
+        # stays log_e (the topk energy score). ---
+        sum_e = float(e_cal.sum())                       # total calibrated E [GeV]
+        cx = x_sampled[:, 0]; cy = x_sampled[:, 1]; cz = x_sampled[:, 2]
+        r3d = np.sqrt(cx * cx + cy * cy + cz * cz)
+        sin_theta = (np.hypot(cx, cy) / np.clip(r3d, 1e-9, None)).astype(np.float64)
+        sum_et = float((e_cal.astype(np.float64) * sin_theta).sum())  # transverse-E proxy
+        log_sum_et = float(np.log(max(sum_et, 1e-6)))
 
-        loss_fn = KinematicLoss(
-            target_stats_path=stats_path,
-            eta_weight=cfg["eta_weight"],
-            phi_weight=cfg["phi_weight"],
-            logpt_weight=cfg["logpt_weight"],
-            z0_weight=cfg.get("z0_weight", 1.0),
-            charge_weight=cfg.get("charge_weight", 1.0),
-        ).to(device)
+        # --- pointing-z0 anchor: energy-weighted LS fit of cell z vs cell r,
+        # extrapolated to r=0. A straight shower points back to its production z.
+        r_cell = np.hypot(cx, cy).astype(np.float64)
+        z_cell = cz.astype(np.float64)
+        wz = w  # same energy weights as the centroid
+        wsum_z = float(wz.sum())
+        r_bar = float(np.sum(wz * r_cell) / wsum_z)
+        z_bar = float(np.sum(wz * z_cell) / wsum_z)
+        var_r = float(np.sum(wz * (r_cell - r_bar) ** 2) / wsum_z)
+        cov_rz = float(np.sum(wz * (r_cell - r_bar) * (z_cell - z_bar)) / wsum_z)
+        slope = cov_rz / var_r if var_r > 1e-9 else 0.0   # dz/dr
+        z0_anchor = float(z_bar - slope * r_bar)          # z at r=0 [mm]
 
-        optimizer = torch.optim.AdamW(
-            [
-                {"params": model.parameters()},
-                {"params": loss_fn.parameters(), "weight_decay": 0.0},
-            ],
-            lr=cfg["learning_rate"],
-            weight_decay=cfg["weight_decay"],
-        )
+        if self.use_cluster_features:
+            n = x_high_level.shape[0]
 
-        warmup = cfg.get("warmup_epochs", 0)
-        n_epochs = cfg["n_epochs"]
+            # E-weighted shower-shape moments around the anchors; the sign of
+            # skew_phi tags the bremsstrahlung tail direction (i.e. the charge).
+            dphi_all = np.arctan2(np.sin(cell_phi_all - phi_centroid),
+                                  np.cos(cell_phi_all - phi_centroid))
+            deta_all = cell_eta_all - eta_centroid
+            wsum = float(w.sum())
+            std_phi = float(np.sqrt(max(np.sum(w * dphi_all**2) / wsum, 1e-12)))
+            skew_phi = float(np.sum(w * dphi_all**3) / wsum) / std_phi**3
+            std_eta = float(np.sqrt(max(np.sum(w * deta_all**2) / wsum, 1e-12)))
+            skew_eta = float(np.sum(w * deta_all**3) / wsum) / std_eta**3
 
-        def lr_lambda(epoch):  # epoch is 0-indexed by LambdaLR
-            if warmup > 0 and epoch < warmup:
-                return (epoch + 1) / warmup
-            import math
-            progress = (epoch - warmup) / max(1, n_epochs - warmup)
-            return 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
-
-        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
-
-        global_step = 0
-        best_val_loss = float("inf")
-        best_val_phi_loss = float("inf")
-        best_val_pt_rel_rmse = float("inf")
-
-        best_state = None
-        epochs_no_improve = 0
-
-        for epoch in range(1, cfg["n_epochs"] + 1):
-            model.train()
-
-            total_train_loss = 0.0
-            n_batches = 0
-
-            for batch_idx, batch in enumerate(train_loader):
-                batch = move_batch_to_device(batch, device)
-
-                pred = model(
-                    batch["x_sampled"],
-                    batch["x_high_level"],
-                    batch["mask"],
-                )
-
-                target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX, Z0_INDEX]]
-
-                loss, logs = loss_fn(
-                    pred, target,
-                    batch["phi_centroid"], batch["eta_centroid"], batch["log_sum_et"],
-                    batch["z0_anchor"], batch["truth_charge"],
-                )
-
-                optimizer.zero_grad()
-                loss.backward()
-
-                grad_norm = compute_grad_norm(model)
-
-                optimizer.step()
-
-                total_train_loss += loss.item()
-                n_batches += 1
-
-                if batch_idx % cfg["log_freq_batches"] == 0:
-                    run.log(
-                        {
-                            "train/loss_total_batch": loss.item(),
-                            "train/loss_eta_batch": logs["loss_eta"].item(),
-                            "train/loss_phi_batch": logs["loss_phi"].item(),
-                            "train/loss_logpt_batch": logs["loss_logpt"].item(),
-                            "train/phi_mae_rad_batch": logs["phi_mae_rad"].item(),
-                            "train/phi_rmse_rad_batch": logs["phi_rmse_rad"].item(),
-                            "train/pt_rel_rmse_batch": logs["pt_rel_rmse"].item(),
-                            "grad_norm": grad_norm,
-                            "learning_rate": optimizer.param_groups[0]["lr"],
-                            "epoch": epoch,
-                            "batch_idx": batch_idx,
-                        },
-                        step=global_step,
-                    )
-
-                global_step += 1
-
-            train_loss = total_train_loss / max(n_batches, 1)
-
-            val_logs = evaluate(
-                model=model,
-                loader=val_loader,
-                loss_fn=loss_fn,
-                device=device,
-            )
-
-            val_loss = val_logs["loss_total"]
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
-                best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
-                epochs_no_improve = 0
+            # --- azimuthal charge curvature: E-weighted LS slope of dphi vs the
+            # geometry-correct DEPTH axis. Barrel showers develop along r, endcap
+            # along |z|; we fit against whichever coordinate has the larger
+            # energy-weighted spread, avoiding a near-zero variance (a pure dphi/dr
+            # fit was noise in the endcap). Sign of dphi/d(depth) tracks the charge.
+            # Reuses r_bar / var_r / wsum_z from the z0 pointing fit. The per-slice
+            # <dphi> profile was tested (Plan B) and carried no signal beyond this
+            # slope (profile-LDA ~ chance), so only the scalar slope is kept. ---
+            absz_cell = np.abs(z_cell)
+            z_bar_a = float(np.sum(wz * absz_cell) / wsum_z)
+            var_z = float(np.sum(wz * (absz_cell - z_bar_a) ** 2) / wsum_z)
+            if var_z > var_r:
+                depth_c, d_bar, var_d = absz_cell, z_bar_a, var_z
             else:
-                epochs_no_improve += 1
-            if epochs_no_improve >= 10:          # early stopping patience
-                print(f"early stop at epoch {epoch}")
-                break
-            best_val_phi_loss = min(best_val_phi_loss, val_logs["loss_phi"])
-            best_val_pt_rel_rmse = min(best_val_pt_rel_rmse, val_logs["pt_rel_rmse"])
+                depth_c, d_bar, var_d = r_cell, r_bar, var_r
+            dphi_bar = float(np.sum(wz * dphi_all) / wsum_z)
+            cov_dphi = float(np.sum(wz * (depth_c - d_bar) * (dphi_all - dphi_bar)) / wsum_z)
+            phi_slope = cov_dphi / var_d if var_d > 1e-9 else 0.0   # rad/mm on adaptive depth
 
-            run.log(
-                {
-                    "train/loss_total_epoch": train_loss,
+            # --- pointing-line quality: lets the net judge when to trust the anchor ---
+            z_fit = z_bar + slope * (r_cell - r_bar)
+            fit_rms = float(np.sqrt(np.sum(wz * (z_cell - z_fit) ** 2) / wsum_z))
+            r_spread = float(np.sqrt(max(var_r, 0.0)))   # mm; small => slope ill-determined
 
-                    "val/loss_total": val_logs["loss_total"],
-                    "val/loss_eta": val_logs["loss_eta"],
-                    "val/loss_phi": val_logs["loss_phi"],
-                    "val/loss_logpt": val_logs["loss_logpt"],
-                    "val/phi_mae_rad": val_logs["phi_mae_rad"],
-                    "val/phi_rmse_rad": val_logs["phi_rmse_rad"],
-                    "val/pt_rel_rmse": val_logs["pt_rel_rmse"],
-                    "val/charge_acc": val_logs["charge_acc"],
+            # --- longitudinal pointing profile: E-weighted <z> in K radial slices ---
+            K = 6
+            r_lo, r_hi = float(r_cell.min()), float(r_cell.max())
+            edges = np.linspace(r_lo, r_hi + 1e-6, K + 1)
+            prof_z = np.zeros(K, dtype=np.float32)   # (<z> - anchor)/100 per slice
+            prof_r = np.zeros(K, dtype=np.float32)   # <r>/1000 per slice [m]
+            prof_f = np.zeros(K, dtype=np.float32)   # energy fraction per slice
+            for k in range(K):
+                m = (r_cell >= edges[k]) & (r_cell < edges[k + 1])
+                if m.any():
+                    sk = float(wz[m].sum())
+                    prof_z[k] = (np.sum(wz[m] * z_cell[m]) / sk - z0_anchor) / 100.0
+                    prof_r[k] = (np.sum(wz[m] * r_cell[m]) / sk) / 1000.0
+                    prof_f[k] = sk / wsum_z
 
-                    "best_val_loss": best_val_loss,
-                    "best_val_phi_loss": best_val_phi_loss,
-                    "best_val_pt_rel_rmse": best_val_pt_rel_rmse,
-                    "epoch": epoch,
-                },
-                step=global_step,
+            cluster_feats = np.array(
+                [np.log(max(sum_e, 1e-6)), np.log(max(sum_et, 1e-6)), np.log(max(n, 1)),
+                 std_phi, skew_phi, std_eta, skew_eta,
+                 z0_anchor / 1000.0, slope,
+                 r_spread / 1000.0, fit_rms / 100.0,
+                 phi_slope * 1000.0],          # rad/mm -> rad/m, O(1); adaptive-depth charge curvature
+                dtype=np.float32,
             )
-
-            scheduler.step()
-
-            print(
-                f"epoch {epoch:03d} | "
-                f"train loss {train_loss:.6f} | "
-                f"val loss {val_logs['loss_total']:.6f} | "
-                f"val eta {val_logs['loss_eta']:.6f} | "
-                f"val phi {val_logs['loss_phi']:.6f} | "
-                f"phi RMSE {val_logs['phi_rmse_rad']:.6f} rad | "
-                f"pT res {val_logs['pt_rel_rmse']:.4f} | "
-                f"charge acc {val_logs['charge_acc']:.4f}"
+            cluster_feats = np.concatenate(
+                [cluster_feats, prof_r, prof_z, prof_f]
+            ).astype(np.float32)
+            x_high_level = np.concatenate(
+                [x_high_level, np.tile(cluster_feats, (n, 1))], axis=-1
             )
+        # truth targets
 
-        Path("checkpoints").mkdir(exist_ok=True)
-        checkpoint_path = Path("checkpoints/ruche_eta_phi_pt_z0_charge.pt")
+        target = np.array([row[c] for c in TARGET_COLS], dtype=np.float32)
+        if self.stats is not None:
+            for i, c in enumerate(TARGET_COLS):
+                target[i] = (target[i] - self.stats[c]["mean"]) / self.stats[c]["std"]
 
-        if best_state is not None:
-            model.load_state_dict(best_state)
-
-        torch.save(
-            {
-                "model_state_dict": model.state_dict(),
-                "config": dict(cfg),
-                "target_cols": ["truth_eta", "truth_phi", "truth_log_pt", "truth_z0"],
-                "best_val_loss": best_val_loss,
-                "best_val_phi_loss": best_val_phi_loss,
-                "best_val_pt_rel_rmse": best_val_pt_rel_rmse,
-            },
-            checkpoint_path,
-        )
-
-        artifact = wandb.Artifact(
-            name="eta_phi_pt_z0",
-            type="model",
-            metadata={
-                "best_val_loss": best_val_loss,
-                "best_val_phi_loss": best_val_phi_loss,
-                "best_val_pt_rel_rmse": best_val_pt_rel_rmse,
-                "architecture": cfg["architecture"],
-            },
-        )
-
-        artifact.add_file(str(checkpoint_path))
-        run.log_artifact(artifact)
-
-        run.summary["best_val_loss"] = best_val_loss
-        run.summary["best_val_phi_loss"] = best_val_phi_loss
-        run.summary["best_val_pt_rel_rmse"] = best_val_pt_rel_rmse
-        run.summary["checkpoint_path"] = str(checkpoint_path)
-
-        print(f"Saved checkpoint to {checkpoint_path}")
+        return {
+            "x_sampled":    torch.from_numpy(x_sampled),
+            "x_high_level": torch.from_numpy(x_high_level),
+            "target":       torch.from_numpy(target),
+            "n_cells":      x_sampled.shape[0],
+            "phi_centroid": torch.tensor(phi_centroid, dtype=torch.float32),
+            "eta_centroid": torch.tensor(eta_centroid, dtype=torch.float32),
+            "log_sum_et":   torch.tensor(log_sum_et, dtype=torch.float32),
+            "z0_anchor":    torch.tensor(z0_anchor, dtype=torch.float32),
+            "truth_charge": torch.tensor(float(row["truth_charge"]), dtype=torch.float32),
+        }
 
 
-if __name__ == "__main__":
-    main()
+def collate_pad(batch: list[dict]) -> dict:
+    """Pad variable-length cell sequences in a batch.
+
+    Returns:
+      x_sampled:    (B, L_max, 3)
+      x_high_level: (B, L_max, H)
+      mask:         (B, L_max)  — True = padding, False = real cell
+      target:       (B, n_targets)
+    """
+    B = len(batch)
+    L = max(item["n_cells"] for item in batch)
+    D_sampled = batch[0]["x_sampled"].shape[-1]
+    D_high = batch[0]["x_high_level"].shape[-1]
+    T = batch[0]["target"].shape[-1]
+
+    x_sampled    = torch.zeros(B, L, D_sampled)
+    x_high_level = torch.zeros(B, L, D_high)
+    mask         = torch.ones(B, L, dtype=torch.bool)  # True = padding
+    target       = torch.zeros(B, T)
+    phi_centroid = torch.zeros(B)
+    eta_centroid = torch.zeros(B)
+    log_sum_et   = torch.zeros(B)
+    z0_anchor    = torch.zeros(B)
+    truth_charge = torch.zeros(B)
+
+    for i, item in enumerate(batch):
+        n = item["n_cells"]
+        x_sampled[i, :n] = item["x_sampled"]
+        x_high_level[i, :n] = item["x_high_level"]
+        mask[i, :n] = False
+        target[i] = item["target"]
+        phi_centroid[i] = item["phi_centroid"]
+        eta_centroid[i] = item["eta_centroid"]
+        log_sum_et[i]   = item["log_sum_et"]
+        z0_anchor[i]    = item["z0_anchor"]
+        truth_charge[i] = item["truth_charge"]
+    return {
+        "x_sampled": x_sampled,
+        "x_high_level": x_high_level,
+        "mask": mask,
+        "target": target,
+        "phi_centroid": phi_centroid,
+        "eta_centroid": eta_centroid,
+        "log_sum_et": log_sum_et,
+        "z0_anchor": z0_anchor,
+        "truth_charge": truth_charge,
+    }
+
+
+def make_loader(
+    parquet_path: str | Path,
+    split: str | None = None,
+    target_stats_path: str | Path | None = None,
+    batch_size: int = 32,
+    shuffle: bool = True,
+    num_workers: int = 0,
+    use_angular_features: bool = False,
+    use_cluster_features: bool = False,
+    max_abs_eta: float | None = None,
+    min_abs_eta: float | None = None,
+    min_pt: float | None = None,
+) -> DataLoader:
+    ds = ElectronDataset(
+        parquet_path,
+        split=split,
+        target_stats_path=target_stats_path,
+        use_angular_features=use_angular_features,
+        use_cluster_features=use_cluster_features,
+        max_abs_eta=max_abs_eta,
+        min_abs_eta=min_abs_eta,
+        min_pt=min_pt,
+    )
+
+    return DataLoader(
+        ds,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=num_workers,
+        collate_fn=collate_pad,
+    )
