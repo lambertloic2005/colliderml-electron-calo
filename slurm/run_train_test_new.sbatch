@@ -16,6 +16,7 @@
 #SBATCH --export=ALL
 #SBATCH --exclude=ruche-gpu16
 #SBATCH --tmp=120G
+#SBATCH --requeue
 
 set -euo pipefail
 
@@ -351,15 +352,36 @@ if missing_stats:
         + ", ".join(missing_stats)
     )
 
-split_df = pl.read_parquet(parquet_path, columns=["split", "truth_eta"])
+import os
+
+split_df = pl.read_parquet(
+    parquet_path, columns=["split", "truth_eta", "truth_log_pt"]
+)
+
+region = os.environ.get("REGION", "barrel")
+region_eta = {
+    "barrel": dict(min_abs_eta=None, max_abs_eta=1.7),
+    "endcap": dict(min_abs_eta=1.3, max_abs_eta=3),
+}[region]
+min_pt_gev = 10.0
+
+mask = pl.col("truth_eta").abs() <= region_eta["max_abs_eta"]
+if region_eta["min_abs_eta"] is not None:
+    mask = mask & (pl.col("truth_eta").abs() >= region_eta["min_abs_eta"])
+mask = mask & (pl.col("truth_log_pt").exp() >= min_pt_gev)
+
+print(f"Preflight cuts for REGION={region}: "
+      f"|truth_eta| in [{region_eta['min_abs_eta']}, {region_eta['max_abs_eta']}], "
+      f"pT >= {min_pt_gev} GeV")
 
 for split in ["train", "val", "test"]:
-    n = split_df.filter(
-        (pl.col("split") == split) & (pl.col("truth_eta").abs() <= 3)
-    ).height
-    print(f"{split} rows after |truth_eta| <= 3 cut: {n}")
+    n = split_df.filter((pl.col("split") == split) & mask).height
+    print(f"{split} rows after REAL region+pT cut: {n}")
     if n == 0:
-        raise RuntimeError(f"No rows left for split={split} after eta cut.")
+        raise RuntimeError(f"No rows left for split={split} after region+pT cut.")
+    if n < 50:
+        print(f"WARNING: split={split} has only {n} rows after cuts — "
+              f"results for this region/split may be noise-dominated.")
 
 print("Preflight validation passed.")
 PY
