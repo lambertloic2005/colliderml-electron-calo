@@ -24,7 +24,9 @@ Prereqs (same as training):
   - a checkpoint saved by train_eta_phi_pt_angular_features.py
 """
 
+import inspect
 import json
+import os
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -146,10 +148,15 @@ def main():
     print(f"Using device: {device}")
 
     # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
-    checkpoint_path = Path("checkpoints/ruche/ruche_Jun23_ConstChargeWeight.pt")
+    # Both overridable from the shell so baseline vs candidate scoring never
+    # requires editing this file:
+    #   CHECKPOINT=... OUTPUT_DIR=... MIN_PT_EVAL=10 python scripts/test_...
+    checkpoint_path = Path(os.environ.get(
+        "CHECKPOINT", "checkpoints/ruche/ruche_Jun23_ConstChargeWeight.pt"))
     parquet_path = Path("data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet")
     stats_path = Path("data/electrons/eta_phi_pt_z0_charge/target_stats.json")
-    output_dir = Path("results/ruche/Jun23_ConstChargeWeight")
+    output_dir = Path(os.environ.get(
+        "OUTPUT_DIR", "results/ruche/Jun23_ConstChargeWeight"))
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -159,9 +166,21 @@ def main():
 
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     config = checkpoint["config"]
+
+    # --- A/B override: force an eval-time pT floor regardless of what the
+    # checkpoint was trained with, so two models can be scored on the
+    # IDENTICAL test population. Usage: MIN_PT_EVAL=10 python scripts/test_...
+    _min_pt_env = os.environ.get("MIN_PT_EVAL")
+    if _min_pt_env is not None:
+        config["min_pt"] = float(_min_pt_env)
+        print(f"[override] eval min_pt forced to {config['min_pt']} GeV")
+
     stats = json.loads(stats_path.read_text())
 
-    test_loader = make_loader(
+    # Older branches (e.g. final-change) have no min_pt in make_loader; there
+    # the pT floor is applied as a post-inference event mask instead (below),
+    # which selects exactly the same events for the metrics.
+    loader_kwargs = dict(
         parquet_path=parquet_path,
         split="test",
         target_stats_path=stats_path,
@@ -171,8 +190,11 @@ def main():
         use_cluster_features=config.get("use_cluster_features", False),
         max_abs_eta=config.get("max_abs_eta"),
         min_abs_eta=config.get("min_abs_eta"),
-        min_pt=config.get("min_pt"),
     )
+    loader_filters_pt = "min_pt" in inspect.signature(make_loader).parameters
+    if loader_filters_pt:
+        loader_kwargs["min_pt"] = config.get("min_pt")
+    test_loader = make_loader(**loader_kwargs)
 
     common = dict(
         max_cells=config["max_cells"], model_dim=config["model_dim"],
@@ -197,6 +219,23 @@ def main():
     phi_mean, phi_std = stats["truth_phi"]["mean"], stats["truth_phi"]["std"]
     logpt_mean, logpt_std = stats["truth_log_pt"]["mean"], stats["truth_log_pt"]["std"]
     z0_mean, z0_std = stats["truth_z0"]["mean"], stats["truth_z0"]["std"]
+
+    # --- post-inference pT floor (only when the loader could not filter):
+    # mask the raw arrays BEFORE decoding so every downstream quantity
+    # (residuals, charge, plots, metrics) sees the identical event set. ---
+    post_mask = None
+    if (config.get("min_pt") is not None) and not loader_filters_pt:
+        _true_pt_full = np.exp(target_norm[:, 2] * logpt_std + logpt_mean)
+        post_mask = _true_pt_full >= float(config["min_pt"])
+        print(f"[post-mask] pT >= {config['min_pt']} GeV: "
+              f"{len(post_mask)} -> {int(post_mask.sum())} events")
+        pred_norm = pred_norm[post_mask]
+        target_norm = target_norm[post_mask]
+        phi_centroid = phi_centroid[post_mask]
+        eta_centroid = eta_centroid[post_mask]
+        log_sum_et = log_sum_et[post_mask]
+        z0_anchor = z0_anchor[post_mask]
+        charge = charge[post_mask]
 
     # ---- decode predictions ----
     pred_eta = eta_centroid + pred_norm[:, 0]                    # anchor + predicted Δη
@@ -260,6 +299,8 @@ def main():
         output_dir / "preds.npz",
         truth_pt=true_pt, truth_eta=true_eta, truth_phi=true_phi,
         pred_eta=pred_eta, pred_phi=pred_phi, pred_pt=pred_pt,
+        truth_z0=true_z0, pred_z0=pred_z0, z0_anchor=z0_anchor,
+        charge=charge, charge_logit=charge_logit,
         # optional anchor-baseline overlay (these names already exist in your decode):
         eta_anchor=eta_centroid, phi_anchor=phi_centroid, pt_anchor=np.exp(log_sum_et),
     )
@@ -308,9 +349,11 @@ def main():
         charge_df = charge_df.filter(pl.col("truth_eta").abs() <= config["max_abs_eta"])
     if config.get("min_abs_eta") is not None:
         charge_df = charge_df.filter(pl.col("truth_eta").abs() >= config["min_abs_eta"])
-    if config.get("min_pt") is not None:
+    if loader_filters_pt and config.get("min_pt") is not None:
         charge_df = charge_df.filter(pl.col("truth_log_pt") >= float(np.log(config["min_pt"])))
     charge = charge_df["truth_charge"].to_numpy()
+    if post_mask is not None:
+        charge = charge[post_mask]        # same event mask as the residual arrays
     assert len(charge) == len(phi_residual), "charge/residual length mismatch"
     for q in (-1, +1):
         sel = charge == q
@@ -578,6 +621,7 @@ def main():
                 wrap=False,
             ),
         ])
+    metrics["test/min_pt_eval"] = config.get("min_pt")
     metrics_path = output_dir / "test_metrics.json"
     metrics_path.write_text(json.dumps(metrics, indent=2))
 
