@@ -243,13 +243,14 @@ def evaluate(
 
 
 def main():
-    REGION = os.environ.get("REGION", "barrel")
+    REGION = os.environ.get("REGION", "full")
     _REGION_ETA = {
+        "full":   dict(min_abs_eta=None, max_abs_eta=3),
         "barrel": dict(min_abs_eta=None, max_abs_eta=1.7),
         "endcap": dict(min_abs_eta=1.3,  max_abs_eta=3),
     }
     if REGION not in _REGION_ETA:
-        raise ValueError(f"REGION must be 'barrel' or 'endcap', got {REGION!r}")
+        raise ValueError(f"REGION must be 'full', 'barrel' or 'endcap', got {REGION!r}")
 
     config = {
         "architecture": "concat_transformer_eta_phi_pt_z0_charge",

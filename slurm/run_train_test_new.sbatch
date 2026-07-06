@@ -7,7 +7,7 @@
 #SBATCH --job-name=trainTestEtaPhiPtZ0Charge
 #SBATCH --output=%x.o%j
 #SBATCH --error=%x.e%j
-#SBATCH --time=4:00:00
+#SBATCH --time=6:00:00
 #SBATCH --mem=40G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
@@ -16,6 +16,8 @@
 #SBATCH --export=ALL
 #SBATCH --exclude=ruche-gpu16
 #SBATCH --tmp=120G
+#SBATCH --requeue
+#SBATCH --open-mode=append
 
 set -euo pipefail
 
@@ -33,7 +35,9 @@ echo "========================================"
 # ============================================================
 
 CONDA_ENV_NAME="colliderml"
-REGION="${REGION:-barrel}"
+REGION="${REGION:-full}"
+
+export REGION="${REGION:-full}"
 
 RUN_NAME="eta_phi_pt_z0_charge_${REGION}_$(date +%Y%m%d_%H%M%S)"
 
@@ -349,18 +353,46 @@ if missing_stats:
         + ", ".join(missing_stats)
     )
 
-split_df = pl.read_parquet(parquet_path, columns=["split", "truth_eta"])
+import os
+
+split_df = pl.read_parquet(
+    parquet_path, columns=["split", "truth_eta", "truth_log_pt"]
+)
+
+region = os.environ.get("REGION", "barrel")
+region_eta = {
+    "barrel": dict(min_abs_eta=None, max_abs_eta=1.7),
+    "endcap": dict(min_abs_eta=1.3, max_abs_eta=3),
+}[region]
+min_pt_gev = 10.0
+
+mask = pl.col("truth_eta").abs() <= region_eta["max_abs_eta"]
+if region_eta["min_abs_eta"] is not None:
+    mask = mask & (pl.col("truth_eta").abs() >= region_eta["min_abs_eta"])
+mask = mask & (pl.col("truth_log_pt").exp() >= min_pt_gev)
+
+print(f"Preflight cuts for REGION={region}: "
+      f"|truth_eta| in [{region_eta['min_abs_eta']}, {region_eta['max_abs_eta']}], "
+      f"pT >= {min_pt_gev} GeV")
 
 for split in ["train", "val", "test"]:
-    n = split_df.filter(
-        (pl.col("split") == split) & (pl.col("truth_eta").abs() <= 3)
-    ).height
-    print(f"{split} rows after |truth_eta| <= 3 cut: {n}")
+    n = split_df.filter((pl.col("split") == split) & mask).height
+    print(f"{split} rows after REAL region+pT cut: {n}")
     if n == 0:
-        raise RuntimeError(f"No rows left for split={split} after eta cut.")
+        raise RuntimeError(f"No rows left for split={split} after region+pT cut.")
+    if n < 50:
+        print(f"WARNING: split={split} has only {n} rows after cuts — "
+              f"results for this region/split may be noise-dominated.")
 
 print("Preflight validation passed.")
 PY
+
+echo "Preflight: feature width + one forward pass (check_dims)"
+python scripts/check_dims.py \
+    --parquet data/electrons/electrons.parquet \
+    --stats data/electrons/target_stats.json \
+    --high-level-dim 60 \
+    --output-dim 5
 
 # ============================================================
 # Train
@@ -400,46 +432,11 @@ cp "$EXPECTED_CKPT" "$TEST_CKPT"
 cp data/electrons/electrons_z0_charge.parquet "$TEST_PARQUET"
 cp data/electrons/target_stats.json "$TEST_STATS"
 
-# The current test script hardcodes older Ruche paths.
-# Patch only the temporary working copy so this run uses proper z0/charge names.
-export TEST_CKPT
-export TEST_PARQUET
-export TEST_STATS
-export TEST_OUTPUT_DIR
-
-python - <<'PY'
-import os
-import re
-from pathlib import Path
-
-script = Path("scripts/test_eta_phi_pt_z0_charge.py")
-text = script.read_text()
-
-# Patch by variable name, not by the literal path string.
-subs = {
-    "checkpoint_path": os.environ["TEST_CKPT"],
-    "parquet_path":    os.environ["TEST_PARQUET"],
-    "stats_path":      os.environ["TEST_STATS"],
-    "output_dir":      os.environ["TEST_OUTPUT_DIR"],
-}
-for var, newpath in subs.items():
-    text, n = re.subn(rf'{var} = Path\("[^"]*"\)',
-                      f'{var} = Path("{newpath}")', text)
-    if n == 0:
-        raise RuntimeError(f"Could not find a Path() assignment to patch for: {var}")
-
-if os.environ["TEST_CKPT"] not in text:
-    raise RuntimeError("Test script checkpoint path was not patched.")
-if os.environ["TEST_PARQUET"] not in text:
-    raise RuntimeError("Test script parquet path was not patched.")
-if os.environ["TEST_OUTPUT_DIR"] not in text:
-    raise RuntimeError("Test script output directory was not patched.")
-if os.environ["TEST_STATS"] not in text:
-    raise RuntimeError("Test script stats path was not patched.")
-
-script.write_text(text)
-print(f"Patched {script} for this SLURM run.")
-PY
+# The test script natively supports env-var overrides; no source patching needed.
+export CHECKPOINT="$TEST_CKPT"
+export PARQUET="$TEST_PARQUET"
+export STATS_PATH="$TEST_STATS"
+export OUTPUT_DIR="$TEST_OUTPUT_DIR"
 
 echo "Test checkpoint:"
 ls -lh "$TEST_CKPT"
