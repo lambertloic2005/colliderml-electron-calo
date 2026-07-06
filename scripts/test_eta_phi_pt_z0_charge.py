@@ -167,13 +167,19 @@ def main():
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
     config = checkpoint["config"]
 
-    # --- A/B override: force an eval-time pT floor regardless of what the
-    # checkpoint was trained with, so two models can be scored on the
-    # IDENTICAL test population. Usage: MIN_PT_EVAL=10 python scripts/test_...
-    _min_pt_env = os.environ.get("MIN_PT_EVAL")
-    if _min_pt_env is not None:
-        config["min_pt"] = float(_min_pt_env)
-        print(f"[override] eval min_pt forced to {config['min_pt']} GeV")
+    # --- A/B overrides: force eval-time acceptance cuts regardless of what
+    # the checkpoint was trained with, so two models can be scored on the
+    # IDENTICAL test population. Usage:
+    #   MIN_PT_EVAL=10 MAX_ABS_ETA_EVAL=1.7 python scripts/test_...
+    # These flow through config, so the loader AND the charge_df reload
+    # apply the same cuts.
+    for _env, _key in (("MIN_PT_EVAL", "min_pt"),
+                       ("MAX_ABS_ETA_EVAL", "max_abs_eta"),
+                       ("MIN_ABS_ETA_EVAL", "min_abs_eta")):
+        _v = os.environ.get(_env)
+        if _v is not None:
+            config[_key] = float(_v)
+            print(f"[override] eval {_key} forced to {config[_key]}")
 
     stats = json.loads(stats_path.read_text())
 
