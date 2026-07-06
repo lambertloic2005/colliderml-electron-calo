@@ -164,13 +164,32 @@ class ElectronDataset(Dataset):
             std_eta = float(np.sqrt(max(np.sum(w * deta_all**2) / wsum, 1e-12)))
             skew_eta = float(np.sum(w * deta_all**3) / wsum) / std_eta**3
 
+            # --- azimuthal charge curvature: E-weighted LS slope of dphi vs the
+            # geometry-correct DEPTH axis. Barrel showers develop along r, endcap
+            # along |z|; we fit against whichever coordinate has the larger
+            # energy-weighted spread, avoiding a near-zero variance (a pure dphi/dr
+            # fit was noise in the endcap). Sign of dphi/d(depth) tracks the charge.
+            # Reuses r_bar / var_r / wsum_z from the z0 pointing fit. The per-slice
+            # <dphi> profile was tested (Plan B) and carried no signal beyond this
+            # slope (profile-LDA ~ chance), so only the scalar slope is kept. ---
+            absz_cell = np.abs(z_cell)
+            z_bar_a = float(np.sum(wz * absz_cell) / wsum_z)
+            var_z = float(np.sum(wz * (absz_cell - z_bar_a) ** 2) / wsum_z)
+            if var_z > var_r:
+                depth_c, d_bar, var_d = absz_cell, z_bar_a, var_z
+            else:
+                depth_c, d_bar, var_d = r_cell, r_bar, var_r
+            dphi_bar = float(np.sum(wz * dphi_all) / wsum_z)
+            cov_dphi = float(np.sum(wz * (depth_c - d_bar) * (dphi_all - dphi_bar)) / wsum_z)
+            phi_slope = cov_dphi / var_d if var_d > 1e-9 else 0.0   # rad/mm on adaptive depth
+
             # --- pointing-line quality: lets the net judge when to trust the anchor ---
             z_fit = z_bar + slope * (r_cell - r_bar)
             fit_rms = float(np.sqrt(np.sum(wz * (z_cell - z_fit) ** 2) / wsum_z))
             r_spread = float(np.sqrt(max(var_r, 0.0)))   # mm; small => slope ill-determined
 
             # --- longitudinal pointing profile: E-weighted <z> in K radial slices ---
-            K = 6
+            K = 12
             r_lo, r_hi = float(r_cell.min()), float(r_cell.max())
             edges = np.linspace(r_lo, r_hi + 1e-6, K + 1)
             prof_z = np.zeros(K, dtype=np.float32)   # (<z> - anchor)/100 per slice
@@ -188,7 +207,8 @@ class ElectronDataset(Dataset):
                 [np.log(max(sum_e, 1e-6)), np.log(max(sum_et, 1e-6)), np.log(max(n, 1)),
                  std_phi, skew_phi, std_eta, skew_eta,
                  z0_anchor / 1000.0, slope,
-                 r_spread / 1000.0, fit_rms / 100.0],
+                 r_spread / 1000.0, fit_rms / 100.0,
+                 phi_slope * 1000.0],          # rad/mm -> rad/m, O(1); adaptive-depth charge curvature
                 dtype=np.float32,
             )
             cluster_feats = np.concatenate(
