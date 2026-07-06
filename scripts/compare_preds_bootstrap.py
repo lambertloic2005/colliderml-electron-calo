@@ -1,16 +1,21 @@
 """Paired bootstrap A/B comparison of two runs on the IDENTICAL test set.
 
 Both preds.npz files must come from the same test population (same split,
-same region cuts, same pT floor) so that event i in file A is event i in
-file B. The script verifies this by matching the truth arrays, then
-bootstrap-resamples EVENTS (paired), recomputing each metric for both runs
-on the same resample. The delta distribution gives a confidence interval
-that is immune to shared event-selection noise.
+same eta cuts, same pT floor). The script matches events between the two
+files by their truth (eta, phi, pT) values, so it also works if orderings
+differ. If the populations differ, it prints a forensic report showing
+exactly how (counts, cut violations, unmatched events) instead of numbers.
 
 Usage:
     python scripts/compare_preds_bootstrap.py \
-        results/<baseline_run>/preds.npz results/<candidate_run>/preds.npz \
-        [n_boot]
+        results/ab/baseline/preds.npz results/ab/candidate/preds.npz \
+        [n_boot] [--align]
+
+--align: proceed on the INTERSECTION of matched events if a small fraction
+(<1%) fails to match (e.g. a single event sitting at a float boundary of
+the pT floor). Refuses if more than 1% is unmatched -- that indicates a
+wrong population, not a boundary effect, and must be fixed at the scoring
+step, never papered over here.
 """
 
 import sys
@@ -20,6 +25,10 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from colliderml_electron.resolution import gaussian_resolution  # noqa: E402
+
+EXPECTED_MAX_ABS_ETA = 1.7   # candidate barrel acceptance
+EXPECTED_MIN_PT = 10.0       # candidate pT floor [GeV]
+ALIGN_MAX_DROP_FRAC = 0.01
 
 
 def _auc(scores: np.ndarray, pos: np.ndarray) -> float:
@@ -37,6 +46,58 @@ def _wrap(x: np.ndarray) -> np.ndarray:
     return np.arctan2(np.sin(x), np.cos(x))
 
 
+def _load_raw(path: Path) -> dict:
+    f = np.load(path)
+    d = {k: f[k] for k in f.files}
+    missing = [k for k in ("truth_z0", "pred_z0", "charge", "charge_logit")
+               if k not in d]
+    if missing:
+        print(f"[warning] {path} is missing {missing} -- it was written by "
+              f"the OLD test script (before the extended np.savez). Regenerate "
+              f"it with the updated script; z0/charge metrics will be skipped.")
+    return d
+
+
+def _summary(name: str, d: dict) -> None:
+    pt, eta = d["truth_pt"], d["truth_eta"]
+    n = len(pt)
+    n_lowpt = int(np.sum(pt < EXPECTED_MIN_PT))
+    n_higheta = int(np.sum(np.abs(eta) > EXPECTED_MAX_ABS_ETA))
+    print(f"  {name}: n={n}")
+    print(f"    truth pT  [GeV]: min={pt.min():8.3f}  max={pt.max():8.3f}  "
+          f"events below {EXPECTED_MIN_PT} GeV floor: {n_lowpt}")
+    print(f"    |truth eta|    : min={np.abs(eta).min():8.4f}  "
+          f"max={np.abs(eta).max():8.4f}  "
+          f"events beyond |eta|={EXPECTED_MAX_ABS_ETA}: {n_higheta}")
+    if n_lowpt:
+        print(f"    -> the pT floor was NOT applied when this file was scored")
+    if n_higheta:
+        print(f"    -> the eta cut was NOT applied when this file was scored")
+
+
+def _keys(d: dict) -> list:
+    # truth values decode identically on both branches (same parquet, same
+    # stats, same float32 targets), so exact-value matching is safe; rounding
+    # only guards against last-bit noise.
+    return list(zip(np.round(d["truth_eta"], 6),
+                    np.round(d["truth_phi"], 6),
+                    np.round(d["truth_pt"], 4)))
+
+
+def _residuals(d: dict, idx: np.ndarray) -> dict:
+    out = {
+        "eta_res": (d["pred_eta"] - d["truth_eta"])[idx],
+        "phi_res": _wrap(d["pred_phi"] - d["truth_phi"])[idx],
+        "pt_res": ((d["pred_pt"] - d["truth_pt"]) / d["truth_pt"])[idx],
+    }
+    if "pred_z0" in d and "truth_z0" in d:
+        out["z0_res"] = (d["pred_z0"] - d["truth_z0"])[idx]
+    if "charge_logit" in d and "charge" in d:
+        out["charge_logit"] = d["charge_logit"][idx]
+        out["charge"] = d["charge"][idx]
+    return out
+
+
 def _metrics(d: dict, idx: np.ndarray) -> dict:
     out = {
         "eta_sigma": gaussian_resolution(d["eta_res"][idx]).sigma,
@@ -52,50 +113,99 @@ def _metrics(d: dict, idx: np.ndarray) -> dict:
     return out
 
 
-def _load(path: Path) -> dict:
-    f = np.load(path)
-    d = {
-        "truth": np.stack([f["truth_eta"], f["truth_phi"], f["truth_pt"]], axis=1),
-        "eta_res": f["pred_eta"] - f["truth_eta"],
-        "phi_res": _wrap(f["pred_phi"] - f["truth_phi"]),
-        "pt_res": (f["pred_pt"] - f["truth_pt"]) / f["truth_pt"],
-    }
-    if "pred_z0" in f.files:
-        d["z0_res"] = f["pred_z0"] - f["truth_z0"]
-    if "charge_logit" in f.files:
-        d["charge_logit"] = f["charge_logit"]
-        d["charge"] = f["charge"]
-    return d
-
-
 def main() -> None:
-    if len(sys.argv) < 3:
+    args = [a for a in sys.argv[1:] if a != "--align"]
+    align = "--align" in sys.argv[1:]
+    if len(args) < 2:
         sys.exit(__doc__)
-    a = _load(Path(sys.argv[1]))
-    b = _load(Path(sys.argv[2]))
-    n_boot = int(sys.argv[3]) if len(sys.argv) > 3 else 2000
+    path_a, path_b = Path(args[0]), Path(args[1])
+    n_boot = int(args[2]) if len(args) > 2 else 2000
 
-    if a["truth"].shape != b["truth"].shape or not np.allclose(
-        a["truth"], b["truth"], atol=1e-5
-    ):
-        sys.exit(
-            "Truth arrays differ: the two runs were NOT scored on the same "
-            "test population. Re-score both with identical region and min_pt "
-            "cuts (e.g. MIN_PT_EVAL=10) before comparing."
+    a, b = _load_raw(path_a), _load_raw(path_b)
+
+    # ---- event matching by truth values ----
+    keys_a, keys_b = _keys(a), _keys(b)
+    index_a = {}
+    dup_a = 0
+    for i, k in enumerate(keys_a):
+        if k in index_a:
+            dup_a += 1
+        else:
+            index_a[k] = i
+    if dup_a:
+        print(f"[warning] {dup_a} duplicate truth keys in A (kept first each)")
+
+    ia, ib = [], []
+    for j, k in enumerate(keys_b):
+        i = index_a.pop(k, None)
+        if i is not None:
+            ia.append(i)
+            ib.append(j)
+    unmatched_a = len(keys_a) - dup_a - len(ia)
+    unmatched_b = len(keys_b) - len(ib)
+
+    if unmatched_a or unmatched_b:
+        print("=" * 70)
+        print("POPULATION MISMATCH -- forensic report")
+        print("=" * 70)
+        _summary(f"A (baseline)  {path_a}", a)
+        _summary(f"B (candidate) {path_b}", b)
+        print(f"\n  matched events: {len(ia)}")
+        print(f"  in A only: {unmatched_a}    in B only: {unmatched_b}")
+
+        def _show_unmatched(name, d, matched_idx, n_show=5):
+            mask = np.ones(len(d["truth_pt"]), dtype=bool)
+            mask[np.asarray(matched_idx, dtype=int)] = False
+            um = np.where(mask)[0]
+            if um.size:
+                print(f"  first {min(n_show, um.size)} events only in {name} "
+                      f"(truth pT [GeV], truth eta):")
+                for i in um[:n_show]:
+                    print(f"    pT={d['truth_pt'][i]:8.3f}  "
+                          f"eta={d['truth_eta'][i]:+7.4f}")
+
+        _show_unmatched("A", a, ia)
+        _show_unmatched("B", b, ib)
+
+        drop_frac = max(
+            unmatched_a / max(len(keys_a), 1),
+            unmatched_b / max(len(keys_b), 1),
         )
+        if not align:
+            sys.exit(
+                "\nRefusing to compare. Diagnose with the report above: "
+                "events below the pT floor or beyond the eta cut mean that "
+                "file was scored without the MIN_PT_EVAL / MAX_ABS_ETA_EVAL "
+                "overrides (or with the old test script). Re-score that file. "
+                "Only if the mismatch is a handful of boundary events, re-run "
+                "with --align."
+            )
+        if drop_frac > ALIGN_MAX_DROP_FRAC:
+            sys.exit(
+                f"\n--align refused: {drop_frac:.1%} of events unmatched "
+                f"(limit {ALIGN_MAX_DROP_FRAC:.0%}). This is a wrong "
+                "population, not a boundary effect. Fix the scoring step."
+            )
+        print(f"\n[--align] proceeding on the {len(ia)} matched events "
+              f"(dropped {unmatched_a} from A, {unmatched_b} from B)")
 
-    n = a["truth"].shape[0]
-    keys = sorted(set(_metrics(a, np.arange(n))) & set(_metrics(b, np.arange(n))))
-    print(f"paired bootstrap on n={n} events, {n_boot} resamples\n")
+    ia = np.asarray(ia, dtype=int)
+    ib = np.asarray(ib, dtype=int)
+    ra = _residuals(a, ia)
+    rb = _residuals(b, ib)
 
-    full_a = _metrics(a, np.arange(n))
-    full_b = _metrics(b, np.arange(n))
+    n = len(ia)
+    keys = sorted(set(_metrics(ra, np.arange(n))) & set(_metrics(rb, np.arange(n))))
+    print(f"\npaired bootstrap on n={n} events, {n_boot} resamples\n")
+
+    full_a = _metrics(ra, np.arange(n))
+    full_b = _metrics(rb, np.arange(n))
 
     rng = np.random.default_rng(0)
     deltas = {k: np.empty(n_boot) for k in keys}
     for i in range(n_boot):
         idx = rng.integers(0, n, size=n)
-        ma, mb = _metrics(a, idx), _metrics(b, idx)
+        ma, mb = _metrics(ra, idx), _metrics(rb, idx)
         for k in keys:
             deltas[k][i] = mb[k] - ma[k]
 
