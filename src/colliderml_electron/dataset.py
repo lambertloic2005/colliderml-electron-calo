@@ -147,7 +147,15 @@ class ElectronDataset(Dataset):
         z_bar = float(np.sum(wz * z_cell) / wsum_z)
         var_r = float(np.sum(wz * (r_cell - r_bar) ** 2) / wsum_z)
         cov_rz = float(np.sum(wz * (r_cell - r_bar) * (z_cell - z_bar)) / wsum_z)
-        slope = cov_rz / var_r if var_r > 1e-9 else 0.0   # dz/dr
+        # Variance floor: below ~5mm of radial leverage the LS slope is
+        # statistically undetermined and can diverge to unphysical values
+        # (observed |slope| up to ~123 in production data, vs a physical
+        # ceiling of sinh(3) ~ 10 at |eta_max|=3). The old `> 1e-9` guard only
+        # avoided literal div-by-zero, not near-singular fits. Below the
+        # floor, fall back to "no slope information" (z0_anchor = z_bar) --
+        # exactly the case r_spread/fit_rms exist to let the network flag.
+        MIN_VAR_R = 25.0  # mm^2, i.e. sqrt ~ 5 mm minimum radial spread
+        slope = cov_rz / var_r if var_r > MIN_VAR_R else 0.0   # dz/dr
         z0_anchor = float(z_bar - slope * r_bar)          # z at r=0 [mm]
 
         if self.use_cluster_features:
@@ -181,7 +189,11 @@ class ElectronDataset(Dataset):
                 depth_c, d_bar, var_d = r_cell, r_bar, var_r
             dphi_bar = float(np.sum(wz * dphi_all) / wsum_z)
             cov_dphi = float(np.sum(wz * (depth_c - d_bar) * (dphi_all - dphi_bar)) / wsum_z)
-            phi_slope = cov_dphi / var_d if var_d > 1e-9 else 0.0   # rad/mm on adaptive depth
+            # Same variance-floor rationale as the z0 slope above (observed
+            # |phi_slope*1000| up to ~78 vs a p99 of ~0.25 -- an extreme,
+            # rare-event tail from the identical near-singular-fit mechanism).
+            MIN_VAR_D = 25.0  # mm^2
+            phi_slope = cov_dphi / var_d if var_d > MIN_VAR_D else 0.0   # rad/mm on adaptive depth
 
             # --- pointing-line quality: lets the net judge when to trust the anchor ---
             z_fit = z_bar + slope * (r_cell - r_bar)
@@ -214,6 +226,12 @@ class ElectronDataset(Dataset):
             cluster_feats = np.concatenate(
                 [cluster_feats, prof_r, prof_z, prof_f]
             ).astype(np.float32)
+            # Defense-in-depth: even with the variance floors above, guarantee
+            # every exposed high-level feature is bounded. Healthy events sit
+            # well within +-30 (measured p99 across all features); this only
+            # clips the pathological tail (previously up to ~449), not the
+            # normal dynamic range.
+            cluster_feats = np.clip(cluster_feats, -50.0, 50.0)
             x_high_level = np.concatenate(
                 [x_high_level, np.tile(cluster_feats, (n, 1))], axis=-1
             )

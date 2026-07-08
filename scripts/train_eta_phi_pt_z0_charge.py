@@ -276,6 +276,7 @@ def main():
 
         "batch_size": 64,
         "n_epochs": 144,
+        "min_epochs": 60,
         "learning_rate": 3e-4,
         "weight_decay": 1e-4,
         "warmup_epochs": 3,
@@ -485,7 +486,11 @@ def main():
                 _tmp.replace(Path("checkpoints/ruche_eta_phi_pt_z0_charge.pt"))
             else:
                 epochs_no_improve += 1
-            if epochs_no_improve >= 10:          # early stopping patience
+            # Early stopping is gated on a minimum epoch count: the charge head
+            # converges far more slowly than the regression heads that dominate
+            # total val loss, and patience-10 alone cut a previous run at epoch
+            # 49 with charge accuracy still climbing.
+            if epoch >= cfg.get("min_epochs", 60) and epochs_no_improve >= 10:
                 print(f"early stop at epoch {epoch}")
                 break
             best_val_phi_loss = min(best_val_phi_loss, val_logs["loss_phi"])
