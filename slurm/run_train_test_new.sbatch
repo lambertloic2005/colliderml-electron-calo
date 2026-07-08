@@ -7,7 +7,7 @@
 #SBATCH --job-name=trainTestEtaPhiPtZ0Charge
 #SBATCH --output=%x.o%j
 #SBATCH --error=%x.e%j
-#SBATCH --time=6:00:00
+#SBATCH --time=06:00:00
 #SBATCH --mem=40G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
@@ -18,6 +18,7 @@
 #SBATCH --tmp=120G
 #SBATCH --requeue
 #SBATCH --open-mode=append
+#SBATCH --signal=B:TERM@300
 
 set -euo pipefail
 
@@ -35,8 +36,6 @@ echo "========================================"
 # ============================================================
 
 CONDA_ENV_NAME="colliderml"
-REGION="${REGION:-full}"
-
 export REGION="${REGION:-full}"
 
 RUN_NAME="eta_phi_pt_z0_charge_${REGION}_$(date +%Y%m%d_%H%M%S)"
@@ -278,6 +277,7 @@ echo "========================================"
 
 python - <<'PY'
 import json
+import os
 from pathlib import Path
 import polars as pl
 
@@ -353,42 +353,36 @@ if missing_stats:
         + ", ".join(missing_stats)
     )
 
-import os
-
-split_df = pl.read_parquet(
-    parquet_path, columns=["split", "truth_eta", "truth_log_pt"]
-)
-
+# Validate split populations under the ACTUAL region cuts this run will train
+# with -- must mirror _REGION_ETA in scripts/train_eta_phi_pt_z0_charge.py.
 region = os.environ.get("REGION", "full")
 _REGION_ETA = {
     "full":   dict(min_abs_eta=None, max_abs_eta=3),
     "barrel": dict(min_abs_eta=None, max_abs_eta=1.7),
-    "endcap": dict(min_abs_eta=1.3, max_abs_eta=3),
-}[region]
-min_pt_gev = 10.0
+    "endcap": dict(min_abs_eta=1.3,  max_abs_eta=3),
+}
+if region not in _REGION_ETA:
+    raise RuntimeError(f"REGION must be one of {sorted(_REGION_ETA)}, got {region!r}")
+cuts = _REGION_ETA[region]
+print(f"Preflight cuts for REGION={region}: {cuts}")
 
-mask = pl.col("truth_eta").abs() <= _REGION_ETA["max_abs_eta"]
-if _REGION_ETA["min_abs_eta"] is not None:
-    mask = mask & (pl.col("truth_eta").abs() >= _REGION_ETA["min_abs_eta"])
-mask = mask & (pl.col("truth_log_pt").exp() >= min_pt_gev)
-
-print(f"Preflight cuts for REGION={region}: "
-      f"|truth_eta| in [{_REGION_ETA['min_abs_eta']}, {_REGION_ETA['max_abs_eta']}], "
-      f"pT >= {min_pt_gev} GeV")
+split_df = pl.read_parquet(parquet_path, columns=["split", "truth_eta"])
+expr = pl.col("truth_eta").abs() <= cuts["max_abs_eta"]
+if cuts["min_abs_eta"] is not None:
+    expr = expr & (pl.col("truth_eta").abs() >= cuts["min_abs_eta"])
 
 for split in ["train", "val", "test"]:
-    n = split_df.filter((pl.col("split") == split) & mask).height
-    print(f"{split} rows after REAL region+pT cut: {n}")
+    n = split_df.filter((pl.col("split") == split) & expr).height
+    print(f"{split} rows after REGION={region} cuts: {n}")
     if n == 0:
-        raise RuntimeError(f"No rows left for split={split} after region+pT cut.")
-    if n < 50:
-        print(f"WARNING: split={split} has only {n} rows after cuts — "
-              f"results for this region/split may be noise-dominated.")
+        raise RuntimeError(f"No rows left for split={split} after region cuts.")
 
 print("Preflight validation passed.")
 PY
 
 echo "Preflight: feature width + one forward pass (check_dims)"
+# --high-level-dim must match cfg["high_level_dim"] in the train script (60 on
+# the pointing-upgrade branch: 12 angular/detector + 12 cluster + 3*K, K=12).
 python scripts/check_dims.py \
     --parquet data/electrons/electrons.parquet \
     --stats data/electrons/target_stats.json \
@@ -433,7 +427,8 @@ cp "$EXPECTED_CKPT" "$TEST_CKPT"
 cp data/electrons/electrons_z0_charge.parquet "$TEST_PARQUET"
 cp data/electrons/target_stats.json "$TEST_STATS"
 
-# The test script natively supports env-var overrides; no source patching needed.
+# The test script natively supports env-var overrides
+# (CHECKPOINT / PARQUET / STATS_PATH / OUTPUT_DIR); no source patching needed.
 export CHECKPOINT="$TEST_CKPT"
 export PARQUET="$TEST_PARQUET"
 export STATS_PATH="$TEST_STATS"
