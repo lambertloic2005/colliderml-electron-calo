@@ -359,20 +359,21 @@ split_df = pl.read_parquet(
     parquet_path, columns=["split", "truth_eta", "truth_log_pt"]
 )
 
-region = os.environ.get("REGION", "barrel")
-region_eta = {
+region = os.environ.get("REGION", "full")
+_REGION_ETA = {
+    "full":   dict(min_abs_eta=None, max_abs_eta=3),
     "barrel": dict(min_abs_eta=None, max_abs_eta=1.7),
     "endcap": dict(min_abs_eta=1.3, max_abs_eta=3),
 }[region]
 min_pt_gev = 10.0
 
-mask = pl.col("truth_eta").abs() <= region_eta["max_abs_eta"]
-if region_eta["min_abs_eta"] is not None:
-    mask = mask & (pl.col("truth_eta").abs() >= region_eta["min_abs_eta"])
+mask = pl.col("truth_eta").abs() <= _REGION_ETA["max_abs_eta"]
+if _REGION_ETA["min_abs_eta"] is not None:
+    mask = mask & (pl.col("truth_eta").abs() >= _REGION_ETA["min_abs_eta"])
 mask = mask & (pl.col("truth_log_pt").exp() >= min_pt_gev)
 
 print(f"Preflight cuts for REGION={region}: "
-      f"|truth_eta| in [{region_eta['min_abs_eta']}, {region_eta['max_abs_eta']}], "
+      f"|truth_eta| in [{_REGION_ETA['min_abs_eta']}, {_REGION_ETA['max_abs_eta']}], "
       f"pT >= {min_pt_gev} GeV")
 
 for split in ["train", "val", "test"]:
