@@ -464,6 +464,25 @@ def main():
                 best_val_loss = val_loss
                 best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
                 epochs_no_improve = 0
+                # Durable best-so-far checkpoint: a TIMEOUT/NODE_FAIL must not
+                # cost the whole run (the final save only happens after the
+                # loop). Write-to-tmp + rename keeps the save atomic; the
+                # "partial" key marks a rescued model vs a completed run (the
+                # final post-loop save overwrites without it).
+                Path("checkpoints").mkdir(exist_ok=True)
+                _tmp = Path("checkpoints/ruche_eta_phi_pt_z0_charge.pt.tmp")
+                torch.save(
+                    {
+                        "model_state_dict": best_state,
+                        "config": dict(cfg),
+                        "target_cols": ["truth_eta", "truth_phi", "truth_log_pt", "truth_z0"],
+                        "best_val_loss": best_val_loss,
+                        "epoch": epoch,
+                        "partial": True,
+                    },
+                    _tmp,
+                )
+                _tmp.replace(Path("checkpoints/ruche_eta_phi_pt_z0_charge.pt"))
             else:
                 epochs_no_improve += 1
             if epochs_no_improve >= 10:          # early stopping patience
