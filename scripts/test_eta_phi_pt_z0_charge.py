@@ -152,11 +152,11 @@ def main():
     # requires editing this file:
     #   CHECKPOINT=... OUTPUT_DIR=... MIN_PT_EVAL=10 python scripts/test_...
     checkpoint_path = Path(os.environ.get(
-        "CHECKPOINT", "checkpoints/ruche/ruche_Jul08_pointing_upgrade_full.pt"))
+        "CHECKPOINT", "checkpoints/ruche/ruche_Jul08_pointing_upgrade_full_2.pt"))
     parquet_path = Path("data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet")
     stats_path = Path("data/electrons/eta_phi_pt_z0_charge/target_stats.json")
     output_dir = Path(os.environ.get(
-        "OUTPUT_DIR", "results/ruche/Jul08_pointing_upgrade_full"))
+        "OUTPUT_DIR", "results/ruche/Jul08_pointing_upgrade_full_2"))
 
     output_dir.mkdir(parents=True, exist_ok=True)
 

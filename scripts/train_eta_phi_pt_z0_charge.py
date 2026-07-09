@@ -1,3 +1,10 @@
+# =============================================================================
+# JOB 1 -- RETREAT CONTROL -- branch: retreat-control  (created off pointing-upgrade)
+# Paste as: scripts/train_eta_phi_pt_z0_charge.py   (keep this exact filename/path)
+# Content: high_level_dim = 41, NO min_pt (trains on all pT), min_epochs = 60,
+#          durable best-checkpoint save.
+# Pairs with: the retreat-control dataset.py (K=6, no phi_slope).
+# =============================================================================
 import json
 import os
 
@@ -254,7 +261,7 @@ def main():
 
     config = {
         "architecture": "concat_transformer_eta_phi_pt_z0_charge",
-        "high_level_dim": 60,
+        "high_level_dim": 41,
         "region": REGION,
         "max_abs_eta": _REGION_ETA[REGION]["max_abs_eta"],
         "min_abs_eta": _REGION_ETA[REGION]["min_abs_eta"],

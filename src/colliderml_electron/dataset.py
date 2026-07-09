@@ -1,3 +1,12 @@
+# =============================================================================
+# JOB 1 -- RETREAT CONTROL -- branch: retreat-control  (created off pointing-upgrade)
+# Paste as: src/colliderml_electron/dataset.py   (keep this exact filename/path)
+# Content: baseline 41-feature set (K=6, phi_slope NOT exposed), NO pT floor,
+#          variance floors + clip + all safety hardening retained.
+# Pairs with: the retreat-control train script (high_level_dim = 41).
+# Preflight: python scripts/check_dims.py --high-level-dim 41 --output-dim 5
+# Submit FROM THIS BRANCH: REGION=full sbatch slurm/run_train_test_new.sbatch
+# =============================================================================
 from __future__ import annotations
 import json
 from pathlib import Path
@@ -201,7 +210,7 @@ class ElectronDataset(Dataset):
             r_spread = float(np.sqrt(max(var_r, 0.0)))   # mm; small => slope ill-determined
 
             # --- longitudinal pointing profile: E-weighted <z> in K radial slices ---
-            K = 12
+            K = 6
             r_lo, r_hi = float(r_cell.min()), float(r_cell.max())
             edges = np.linspace(r_lo, r_hi + 1e-6, K + 1)
             prof_z = np.zeros(K, dtype=np.float32)   # (<z> - anchor)/100 per slice
@@ -219,8 +228,7 @@ class ElectronDataset(Dataset):
                 [np.log(max(sum_e, 1e-6)), np.log(max(sum_et, 1e-6)), np.log(max(n, 1)),
                  std_phi, skew_phi, std_eta, skew_eta,
                  z0_anchor / 1000.0, slope,
-                 r_spread / 1000.0, fit_rms / 100.0,
-                 phi_slope * 1000.0],          # rad/mm -> rad/m, O(1); adaptive-depth charge curvature
+                 r_spread / 1000.0, fit_rms / 100.0],
                 dtype=np.float32,
             )
             cluster_feats = np.concatenate(
