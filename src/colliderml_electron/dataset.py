@@ -1,3 +1,13 @@
+# =============================================================================
+# JOB 2 -- COMBO -- branch: combo-floor  (created off pointing-upgrade)
+# Paste as: src/colliderml_electron/dataset.py   (keep this exact filename/path)
+# Content: K=12 + phi_slope feature (60 features total) + min_pt plumbing so
+#          training can apply the pT >= 10 GeV floor; floors/clip retained.
+# Pairs with: the combo-floor train script (high_level_dim = 60, min_pt = 10.0).
+# Preflight: python scripts/check_dims.py --high-level-dim 60 --output-dim 5
+# Submit FROM THIS BRANCH: REGION=full sbatch slurm/run_train_test_new.sbatch
+# Log must show: "acceptance cut pT >= 10: N -> M"  (if absent, scancel)
+# =============================================================================
 from __future__ import annotations
 import json
 from pathlib import Path
@@ -39,6 +49,7 @@ class ElectronDataset(Dataset):
         use_cluster_features: bool = False,
         max_abs_eta: float | None = None,
         min_abs_eta: float | None = None,
+        min_pt: float | None = None,
     ):
         df = pl.read_parquet(parquet_path)
 
@@ -53,6 +64,10 @@ class ElectronDataset(Dataset):
             n0 = df.height
             df = df.filter(pl.col("truth_eta").abs() >= min_abs_eta)
             print(f"acceptance cut |truth_eta| >= {min_abs_eta}: {n0} -> {df.height}")
+        if min_pt is not None:
+            n0 = df.height
+            df = df.filter(pl.col("truth_log_pt").exp() >= min_pt)
+            print(f"acceptance cut pT >= {min_pt}: {n0} -> {df.height}")
 
         self.df = df
         self.use_angular_features = use_angular_features
@@ -315,6 +330,7 @@ def make_loader(
     use_cluster_features: bool = False,
     max_abs_eta: float | None = None,
     min_abs_eta: float | None = None,
+    min_pt: float | None = None,
 ) -> DataLoader:
     ds = ElectronDataset(
         parquet_path,
@@ -323,7 +339,8 @@ def make_loader(
         use_angular_features=use_angular_features,
         use_cluster_features=use_cluster_features,
         max_abs_eta=max_abs_eta,
-        min_abs_eta=min_abs_eta
+        min_abs_eta=min_abs_eta,
+        min_pt=min_pt,
     )
 
     return DataLoader(

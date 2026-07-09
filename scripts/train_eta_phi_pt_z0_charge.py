@@ -1,3 +1,10 @@
+# =============================================================================
+# JOB 2 -- COMBO -- branch: combo-floor  (created off pointing-upgrade)
+# Paste as: scripts/train_eta_phi_pt_z0_charge.py   (keep this exact filename/path)
+# Content: high_level_dim = 60, "min_pt": 10.0 (train-time floor), min_epochs = 60,
+#          durable best-checkpoint save.
+# Pairs with: the combo-floor dataset.py (K=12 + phi_slope + min_pt plumbing).
+# =============================================================================
 import json
 import os
 
@@ -277,6 +284,7 @@ def main():
         "batch_size": 64,
         "n_epochs": 144,
         "min_epochs": 60,
+        "min_pt": 10.0,
         "learning_rate": 3e-4,
         "weight_decay": 1e-4,
         "warmup_epochs": 3,
@@ -330,7 +338,8 @@ def main():
             use_angular_features=cfg["use_angular_features"],
             use_cluster_features=cfg["use_cluster_features"],
             max_abs_eta=cfg.get("max_abs_eta"),
-            min_abs_eta=cfg.get("min_abs_eta")
+            min_abs_eta=cfg.get("min_abs_eta"),
+            min_pt=cfg.get("min_pt"),
         )
 
         val_loader = make_loader(
@@ -342,7 +351,8 @@ def main():
             use_angular_features=cfg["use_angular_features"],
             use_cluster_features=cfg["use_cluster_features"],
             max_abs_eta=cfg.get("max_abs_eta"),
-            min_abs_eta=cfg.get("min_abs_eta")
+            min_abs_eta=cfg.get("min_abs_eta"),
+            min_pt=cfg.get("min_pt"),
         )
 
         common = dict(
