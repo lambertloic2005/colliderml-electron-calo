@@ -1,27 +1,30 @@
+# =============================================================================
+# JOB 2 -- COMBO -- branch: combo-floor
+# Paste as: scripts/test_eta_phi_pt_z0_charge.py   (keep this exact filename/path)
+# Same evaluation code as the retreat-control copy; only the default
+# CHECKPOINT/OUTPUT_DIR strings differ (env overrides supersede both anyway).
+# =============================================================================
 """
-Test / evaluate the eta + phi + pT model (angular-feature inputs).
+Test / evaluate the eta + phi + pT + z0 + charge model.
 
-Derived from scripts/test_eta_phi_angular_features.py, extended for the third
-physics target log(pT).
+Model output layout (output_dim = 5):
 
-Model output layout (output_dim = 4):
-
-    [eta, phi_cos, phi_sin, log_pt]
+    [eta, phi, log_pt, z0, charge_logit]
 
 Decoding:
     eta    -> denormalize with target_stats
-    phi    -> atan2(phi_sin, phi_cos)            (radians)
+    phi    -> denormalize (single signed head; radians)
     pT     -> exp(denormalize(log_pt))           (GeV)
+    z0     -> denormalize with target_stats      (mm)
+    charge -> sigmoid(charge_logit) > 0.5 => positron
 
-pT is reported as a *fractional* resolution: the residual
-(pred_pT - true_pT) / true_pT is fit with the same 3-sigma-truncated Gaussian
-used for eta/phi, so its sigma is directly comparable to the "1.5%"-style
-track-parameter resolutions in the thesis.
+Resolutions are 3-sigma-truncated Gaussian fits; pT is reported as a
+fractional resolution (pred - true)/true.
 
-Prereqs (same as training):
-  - parquet has a `truth_log_pt` column
-  - target_stats.json contains stats for `truth_log_pt`
-  - a checkpoint saved by train_eta_phi_pt_angular_features.py
+Env overrides (all optional; defaults below):
+    CHECKPOINT, OUTPUT_DIR, PARQUET, STATS_PATH   -- paths
+    MIN_PT_EVAL, MAX_ABS_ETA_EVAL, MIN_ABS_ETA_EVAL -- eval-time acceptance
+STATS_PATH must always match the stats the checkpoint was TRAINED with.
 """
 
 import inspect
@@ -153,8 +156,13 @@ def main():
     #   CHECKPOINT=... OUTPUT_DIR=... MIN_PT_EVAL=10 python scripts/test_...
     checkpoint_path = Path(os.environ.get(
         "CHECKPOINT", "checkpoints/ruche/ruche_Jul08_pointing_upgrade_full.pt"))
-    parquet_path = Path("data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet")
-    stats_path = Path("data/electrons/eta_phi_pt_z0_charge/target_stats.json")
+    parquet_path = Path(os.environ.get(
+        "PARQUET", "data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet"))
+    # CRITICAL after any dataset rebuild: a checkpoint must be decoded with the
+    # SAME target stats it was trained with. Point STATS_PATH at the versioned
+    # stats file matching the checkpoint being scored.
+    stats_path = Path(os.environ.get(
+        "STATS_PATH", "data/electrons/eta_phi_pt_z0_charge/target_stats.json"))
     output_dir = Path(os.environ.get(
         "OUTPUT_DIR", "results/ruche/Jul08_pointing_upgrade_full"))
 
