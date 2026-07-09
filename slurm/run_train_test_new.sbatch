@@ -7,7 +7,7 @@
 #SBATCH --job-name=trainTestEtaPhiPtZ0Charge
 #SBATCH --output=%x.o%j
 #SBATCH --error=%x.e%j
-#SBATCH --time=06:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mem=40G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
@@ -381,12 +381,23 @@ print("Preflight validation passed.")
 PY
 
 echo "Preflight: feature width + one forward pass (check_dims)"
-# --high-level-dim must match cfg["high_level_dim"] in the train script (60 on
-# the pointing-upgrade branch: 12 angular/detector + 12 cluster + 3*K, K=12).
+# Read the declared width from the train config itself so this sbatch works
+# unchanged on every branch (41 on retreat-control, 60 on combo-floor, ...)
+# and can never go stale against a future dim change.
+HLD=$(python - <<'HPY'
+import re
+src = open("scripts/train_eta_phi_pt_z0_charge.py").read()
+m = re.search(r'"high_level_dim"\s*:\s*(\d+)', src)
+if not m:
+    raise SystemExit("could not find high_level_dim in train config")
+print(m.group(1))
+HPY
+)
+echo "declared high_level_dim from train config: $HLD"
 python scripts/check_dims.py \
     --parquet data/electrons/electrons.parquet \
     --stats data/electrons/target_stats.json \
-    --high-level-dim 60 \
+    --high-level-dim "$HLD" \
     --output-dim 5
 
 # ============================================================
