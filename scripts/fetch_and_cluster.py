@@ -71,7 +71,7 @@ EVENTS_PER_SHARD = {"pu0": 1000, "pu200": 100}
 # fails -- e.g. running the stats stage in an env without torch installed.
 DEFAULT_TARGET_COLS = [
     "truth_energy", "truth_px", "truth_py", "truth_pz",
-    "truth_eta", "truth_phi", "truth_log_pt",
+    "truth_eta", "truth_phi", "truth_log_pt", "truth_z0",
 ]
 
 
