@@ -142,6 +142,9 @@ def build_electron_table(
     min_samples: int = 2,           # add
     task_id: int = 0,               # SLURM array slicing: this task's index
     n_tasks: int = 1,               # SLURM array slicing: total number of tasks
+    shard_min: int | None = None,   # inclusive shard-index bounds; None = no bound.
+    shard_max: int | None = None,   # REQUIRED for chunked builds: without them this
+                                    # function processes EVERYTHING on disk.
     out_path: str | Path = "data/electrons/electrons.parquet",
 ) -> pl.DataFrame:
     home = os.path.expanduser("~")
@@ -152,9 +155,16 @@ def build_electron_table(
     p_by_idx = {_shard_index(p): p for p in glob.glob(p_pat)}
     c_by_idx = {_shard_index(p): p for p in glob.glob(c_pat)}
     common = sorted(set(p_by_idx) & set(c_by_idx))
+    if shard_min is not None:
+        common = [i for i in common if i >= shard_min]
+    if shard_max is not None:
+        common = [i for i in common if i <= shard_max]
 
     if not common:
-        raise RuntimeError(f"no matched shards. Found {len(p_by_idx)} particles, {len(c_by_idx)} calo_hits.")
+        raise RuntimeError(
+            f"no matched shards in range [{shard_min}, {shard_max}]. "
+            f"Found {len(p_by_idx)} particles / {len(c_by_idx)} calo_hits on disk."
+        )
 
     n_total = len(common)
     if n_tasks > 1:

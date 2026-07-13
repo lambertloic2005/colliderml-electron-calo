@@ -170,6 +170,15 @@ def stage_download(args) -> None:
     if not calo or not part:
         sys.exit(f"ERROR: found {len(calo)} calo_hits / {len(part)} particles shards. "
                  f"Check --channel/--pileup (config names must exist in {REPO_ID}).")
+    if args.shard_min is not None:
+        calo = {i: v for i, v in calo.items() if i >= args.shard_min}
+        part = {i: v for i, v in part.items() if i >= args.shard_min}
+    if args.shard_max is not None:
+        calo = {i: v for i, v in calo.items() if i <= args.shard_max}
+        part = {i: v for i, v in part.items() if i <= args.shard_max}
+    if not calo or not part:
+        sys.exit(f"ERROR: no shards left in range "
+                 f"[{args.shard_min}, {args.shard_max}].")
 
     common, planned, planned_bytes = plan_pairs(calo, part, cap_bytes, args.max_shards)
     if not planned:
@@ -255,6 +264,8 @@ def stage_process(args) -> None:
         min_samples=args.min_samples,
         task_id=args.task_id,        # SLURM array slicing
         n_tasks=args.n_tasks,        # SLURM array slicing
+        shard_min=args.shard_min,        # chunked builds: bound this pass
+        shard_max=args.shard_max,
         out_path=str(out),
     )
 
@@ -396,6 +407,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--max-shards", type=int, default=None,
                    help="Optional cap on number of shard pairs (applied alongside "
                         "--cap-gb, whichever binds first).")
+    p.add_argument("--shard-min", type=int, default=None,
+                   help="Lowest shard index (inclusive) to download/process.")
+    p.add_argument("--shard-max", type=int, default=None,
+                   help="Highest shard index (inclusive) to download/process.")
     p.add_argument("--data-dir", default=str(BUILDER_CACHE),
                    help="Where shards live. On a shared machine point this (and "
                         "COLLIDERML_DATA_DIR) at scratch / your project space.")
