@@ -21,6 +21,10 @@ Decoding:
 Resolutions are 3-sigma-truncated Gaussian fits; pT is reported as a
 fractional resolution (pred - true)/true.
 
+EVAL POPULATION: this script only scores electrons with TRUE pT >= 10 GeV
+(the registered benchmark population). MIN_PT_EVAL may raise the floor
+further but can never lower it below 10 GeV.
+
 Env overrides (all optional; defaults below):
     CHECKPOINT, OUTPUT_DIR, PARQUET, STATS_PATH   -- paths
     MIN_PT_EVAL, MAX_ABS_ETA_EVAL, MIN_ABS_ETA_EVAL -- eval-time acceptance
@@ -155,7 +159,7 @@ def main():
     # requires editing this file:
     #   CHECKPOINT=... OUTPUT_DIR=... MIN_PT_EVAL=10 python scripts/test_...
     checkpoint_path = Path(os.environ.get(
-        "CHECKPOINT", "checkpoints/ruche/ruche_Jul08_pointing_upgrade_full.pt"))
+        "CHECKPOINT", "checkpoints/ruche/ruche_Jun23_ConstChargeWeight.pt"))
     parquet_path = Path(os.environ.get(
         "PARQUET", "data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet"))
     # CRITICAL after any dataset rebuild: a checkpoint must be decoded with the
@@ -164,7 +168,7 @@ def main():
     stats_path = Path(os.environ.get(
         "STATS_PATH", "data/electrons/eta_phi_pt_z0_charge/target_stats.json"))
     output_dir = Path(os.environ.get(
-        "OUTPUT_DIR", "results/ruche/Jul08_pointing_upgrade_full"))
+        "OUTPUT_DIR", "results/ruche/Jun23_ConstChargeWeight"))
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -188,6 +192,14 @@ def main():
         if _v is not None:
             config[_key] = float(_v)
             print(f"[override] eval {_key} forced to {config[_key]}")
+
+    # --- HARD EVAL FLOOR: this script only ever scores electrons with
+    # TRUE pT >= 10 GeV (the registered benchmark population).
+    # MIN_PT_EVAL can still RAISE the floor, but never lower it below 10.
+    HARD_MIN_PT_EVAL = 10.0
+    if config.get("min_pt") is None or float(config["min_pt"]) < HARD_MIN_PT_EVAL:
+        config["min_pt"] = HARD_MIN_PT_EVAL
+    print(f"[eval floor] scoring only electrons with true pT >= {config['min_pt']} GeV")
 
     stats = json.loads(stats_path.read_text())
 
@@ -336,7 +348,7 @@ def main():
     else:
         print(" no events passed the filtered z0 cut")
     
-    PT_FLOOR_GEV = 5.0
+    PT_FLOOR_GEV = 10.0
     hi = true_pt >= PT_FLOOR_GEV
     pt_rel_hi = pt_rel_residual[hi]
 
