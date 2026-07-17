@@ -221,15 +221,42 @@ def stage_download(args) -> None:
                 continue
             # local_dir is the per-config root; filename carries the data/<cfg>/... subpath,
             # so the file lands exactly where build_electron_table globs.
-            hf_hub_download(
-                repo_id=REPO_ID,
-                repo_type="dataset",
-                revision=args.revision,
-                filename=repo_path,
-                local_dir=str(data_dir / DATASET_DIRNAME / cfg),
-                force_download=args.force,
-                token=args.token or None,
-            )
+            #
+            # The HF endpoint intermittently closes the connection mid-file on
+            # these ~2 GB shards (httpx.RemoteProtocolError: "peer closed
+            # connection without sending complete message body"). Each retry
+            # resumes from the .incomplete file in local_dir/.cache/huggingface,
+            # so progress is never lost -- never delete that dir between attempts.
+            # force_download is honoured on the FIRST attempt only: re-forcing on
+            # a retry would discard the partial we are trying to resume.
+            last_exc = None
+            for attempt in range(1, args.download_retries + 1):
+                try:
+                    hf_hub_download(
+                        repo_id=REPO_ID,
+                        repo_type="dataset",
+                        revision=args.revision,
+                        filename=repo_path,
+                        local_dir=str(data_dir / DATASET_DIRNAME / cfg),
+                        force_download=args.force and attempt == 1,
+                        token=args.token or None,
+                    )
+                    break
+                except Exception as exc:  # network-layer errors surface as several types
+                    last_exc = exc
+                    if attempt == args.download_retries:
+                        break
+                    backoff = min(60.0, 5.0 * 2 ** (attempt - 1))
+                    print(f"    retry {attempt}/{args.download_retries - 1} for "
+                          f"{os.path.basename(repo_path)} after {type(exc).__name__}: {exc}; "
+                          f"resuming in {backoff:.0f}s", flush=True)
+                    time.sleep(backoff)
+            else:
+                pass
+            if last_exc is not None and not (tgt.exists() and abs(tgt.stat().st_size - size) <= 4096):
+                raise RuntimeError(
+                    f"giving up on {repo_path} after {args.download_retries} attempts"
+                ) from last_exc
             downloaded += 1
             on_disk += tgt.stat().st_size if tgt.exists() else size
         if n % 10 == 0 or n == len(planned):
@@ -418,6 +445,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Do not symlink the home cache to --data-dir (use with "
                         "COLLIDERML_DATA_DIR instead).")
     p.add_argument("--force", action="store_true", help="Re-download present shards.")
+    p.add_argument("--download-retries", type=int, default=8,
+                   help="Attempts per file before giving up. Retries resume from "
+                        "the .incomplete partial, so a dropped connection costs "
+                        "only the backoff, not the bytes already transferred.")
     p.add_argument("--dry-run", action="store_true", help="Print the plan, download nothing.")
 
     # supervised selection knobs (forwarded to build_electron_table)
