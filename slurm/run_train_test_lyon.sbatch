@@ -8,7 +8,7 @@
 #SBATCH --output=%x.o%j
 #SBATCH --error=%x.e%j
 #SBATCH --time=12:00:00
-#SBATCH --mem=40G
+#SBATCH --mem=64G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --gpus=1
