@@ -282,12 +282,12 @@ def main():
         "output_dim": 5,
 
         "batch_size": 64,
-        "n_epochs": 144,
-        "min_epochs": 60,
+        "n_epochs": 40,
+        "min_epochs": 10,
         "min_pt": 10.0,
         "learning_rate": 3e-4,
         "weight_decay": 1e-4,
-        "warmup_epochs": 3,
+        "warmup_epochs": 1,
 
         "eta_weight": 1.0,
         "phi_weight": 1.0,
