@@ -282,8 +282,8 @@ def main():
         "output_dim": 5,
 
         "batch_size": 64,
-        "n_epochs": 80,
-        "min_epochs": 55,
+        "n_epochs": 100,
+        "min_epochs": 40,
         "learning_rate": 3e-4,
         "weight_decay": 1e-4,
         "warmup_epochs": 1,
@@ -468,15 +468,19 @@ def main():
             )
 
             val_loss = val_logs["loss_total"]
-            if val_loss < best_val_loss:
-                best_val_loss = val_loss
+            # Charge converges far later than the regression heads and contributes
+            # negligibly to loss_total, so selecting/stopping on loss_total alone
+            # saves a pre-charge-climb checkpoint. Select on a combined score that
+            # rewards charge accuracy explicitly. charge_acc in [0.5,1.0] -> the
+            # (0.5 - acc) term is <= 0 and shrinks the score as charge improves;
+            # the 2.0 scale makes a 0.90 charge head worth ~0.8 of loss_total units,
+            # comparable to the regression spread, without letting charge dominate.
+            charge_acc = val_logs["charge_acc"]
+            selection_score = val_loss - 2.0 * (charge_acc - 0.5)
+            if selection_score < best_val_loss:
+                best_val_loss = selection_score
                 best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
                 epochs_no_improve = 0
-                # Durable best-so-far checkpoint: a TIMEOUT/NODE_FAIL must not
-                # cost the whole run (the final save only happens after the
-                # loop). Write-to-tmp + rename keeps the save atomic; the
-                # "partial" key marks a rescued model vs a completed run (the
-                # final post-loop save overwrites without it).
                 Path("checkpoints").mkdir(exist_ok=True)
                 _tmp = Path("checkpoints/ruche_eta_phi_pt_z0_charge.pt.tmp")
                 torch.save(
@@ -485,6 +489,7 @@ def main():
                         "config": dict(cfg),
                         "target_cols": ["truth_eta", "truth_phi", "truth_log_pt", "truth_z0"],
                         "best_val_loss": best_val_loss,
+                        "best_val_charge_acc": charge_acc,
                         "epoch": epoch,
                         "partial": True,
                     },
