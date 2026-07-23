@@ -1,7 +1,7 @@
 # =============================================================================
 # JOB 1 -- RETREAT CONTROL -- branch: retreat-control  (created off pointing-upgrade)
 # Paste as: scripts/train_eta_phi_pt_z0_charge.py   (keep this exact filename/path)
-# Content: high_level_dim = 41, NO min_pt (trains on all pT), min_epochs = 60,
+# Content: high_level_dim = 41, NO min_pt (trains on all pT), min_epochs = 100,
 #          durable best-checkpoint save.
 # Pairs with: the retreat-control dataset.py (K=6, no phi_slope).
 # =============================================================================
@@ -283,7 +283,7 @@ def main():
 
         "batch_size": 64,
         "n_epochs": 100,
-        "min_epochs": 40,
+        "min_epochs": 100,
         "learning_rate": 3e-4,
         "weight_decay": 1e-4,
         "warmup_epochs": 1,
