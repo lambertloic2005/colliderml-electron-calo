@@ -225,18 +225,8 @@ python --version
 export PYTHONPATH="${JOB_WORKDIR}/src:${PYTHONPATH:-}"
 
 # Fail fast if the job is not importing its own branch's code.
-python3 - <<'PY'
-from pathlib import Path
-p = Path("slurm/run_train_test_lyon.sbatch")
-s = p.read_text()
-old = """JOB_WORKDIR="$JOB_WORKDIR" python - <<'PYCHK'import os, sys, colliderml_electron"""
-new = """JOB_WORKDIR="$JOB_WORKDIR" python - <<'PYCHK'
-import os, sys, colliderml_electron"""
-assert s.count(old) == 1, f"expected 1 match, found {s.count(old)}"
-p.write_text(s.replace(old, new))
-print("heredoc fixed")
-PY
-
+JOB_WORKDIR="$JOB_WORKDIR" python - <<'PYCHK'
+import os, sys, colliderml_electron
 pkg = os.path.dirname(colliderml_electron.__file__)
 want = os.environ["JOB_WORKDIR"] + "/src/colliderml_electron"
 print("colliderml_electron imported from:", pkg)
