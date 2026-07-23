@@ -217,7 +217,12 @@ which python
 echo "Python version:"
 python --version
 
-python -m pip install -e . --no-deps
+# Job-local import path. Do NOT `pip install -e .`: the editable .pth lives in the
+# SHARED conda env, so two concurrent jobs overwrite each other's entry -- which
+# both crashes the second installer and can silently make one branch import the
+# other branch's src/colliderml_electron (K=6 vs K=12 dataset.py). PYTHONPATH is
+# per-process and cannot race.
+export PYTHONPATH="${WORKDIR}/src:${PYTHONPATH}"
 
 export MPLBACKEND=Agg
 export PYTHONUNBUFFERED=1
