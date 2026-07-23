@@ -225,8 +225,7 @@ python --version
 export PYTHONPATH="${JOB_WORKDIR}/src:${PYTHONPATH:-}"
 
 # Fail fast if the job is not importing its own branch's code.
-python - <<'PYCHK'
-import os, sys, colliderml_electron
+JOB_WORKDIR="$JOB_WORKDIR" python - <<'PYCHK'import os, sys, colliderml_electron
 pkg = os.path.dirname(colliderml_electron.__file__)
 want = os.environ["JOB_WORKDIR"] + "/src/colliderml_electron"
 print("colliderml_electron imported from:", pkg)
