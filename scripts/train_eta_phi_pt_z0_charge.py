@@ -1,7 +1,7 @@
 # =============================================================================
 # JOB 2 -- COMBO -- branch: combo-floor  (created off pointing-upgrade)
 # Paste as: scripts/train_eta_phi_pt_z0_charge.py   (keep this exact filename/path)
-# Content: high_level_dim = 60, "min_pt": 10.0 (train-time floor), min_epochs = 40,
+# Content: high_level_dim = 60, "min_pt": 10.0 (train-time floor), min_epochs = 100,
 #          durable best-checkpoint save.
 # Pairs with: the combo-floor dataset.py (K=12 + phi_slope + min_pt plumbing).
 # =============================================================================
@@ -283,7 +283,7 @@ def main():
 
         "batch_size": 64,
         "n_epochs": 100,
-        "min_epochs": 40,
+        "min_epochs": 100,
         "min_pt": 10.0,
         "learning_rate": 3e-4,
         "weight_decay": 1e-4,
@@ -404,7 +404,7 @@ def main():
         best_val_loss = float("inf")
         best_val_phi_loss = float("inf")
         best_val_pt_rel_rmse = float("inf")
-
+        
         best_state = None
         epochs_no_improve = 0
 
