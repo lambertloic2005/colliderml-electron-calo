@@ -224,6 +224,10 @@ python --version
 # per-process and cannot race.
 export PYTHONPATH="${WORKDIR}/src:${PYTHONPATH}"
 
+conda activate "$HOME/envs/colliderml"
+pip uninstall -y colliderml-electron
+ls "$HOME/envs/colliderml/lib/python3.11/site-packages/" | grep -i editable   # expect nothing
+
 export MPLBACKEND=Agg
 export PYTHONUNBUFFERED=1
 
