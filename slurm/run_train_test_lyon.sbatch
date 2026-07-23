@@ -222,13 +222,18 @@ python --version
 # both crashes the second installer and can silently make one branch import the
 # other branch's src/colliderml_electron (K=6 vs K=12 dataset.py). PYTHONPATH is
 # per-process and cannot race.
-export PYTHONPATH="${WORKDIR}/src:${PYTHONPATH}"
+export PYTHONPATH="${JOB_WORKDIR}/src:${PYTHONPATH:-}"
 
-python -c "import colliderml_electron, os; print('imported from:', os.path.dirname(colliderml_electron.__file__))"
-
-conda activate "$HOME/envs/colliderml"
-pip uninstall -y colliderml-electron
-ls "$HOME/envs/colliderml/lib/python3.11/site-packages/" | grep -i editable   # expect nothing
+# Fail fast if the job is not importing its own branch's code.
+python - <<'PYCHK'
+import os, sys, colliderml_electron
+pkg = os.path.dirname(colliderml_electron.__file__)
+want = os.environ["JOB_WORKDIR"] + "/src/colliderml_electron"
+print("colliderml_electron imported from:", pkg)
+if os.path.realpath(pkg) != os.path.realpath(want):
+    print(f"FATAL: expected {want}", file=sys.stderr)
+    sys.exit(1)
+PYCHK
 
 export MPLBACKEND=Agg
 export PYTHONUNBUFFERED=1
