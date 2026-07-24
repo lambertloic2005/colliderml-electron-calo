@@ -304,9 +304,10 @@ def main():
         "log_freq_batches": 10,
         "watch_gradients": False,
 
-        "model_type": "conv",
+        "model_type": "attnpool",  # "concat" or "conv" or "attnpool"
         "conv_dim": 256,
         "kernel_size": 5,
+        "n_queries": 4,
 
         "feature_set": "xyz_loge_eta_phi_theta",
 
@@ -373,9 +374,13 @@ def main():
             dim_feedforward=cfg["dim_feedforward"], dropout=cfg["dropout"],
             output_dim=cfg["output_dim"], high_level_dim=cfg["high_level_dim"],
         )
-        if cfg.get("model_type", "concat") == "conv":
+        model_type = cfg.get("model_type", "concat")
+        if model_type == "conv":
             model = ConvCaloRegressor(**common, conv_dim=cfg["conv_dim"],
                                       kernel_size=cfg["kernel_size"]).to(device)
+        elif model_type == "attnpool":
+            from colliderml_electron.model import AttnPoolCaloRegressor
+            model = AttnPoolCaloRegressor(**common, n_queries=cfg.get("n_queries", 4)).to(device)
         else:
             model = ConcatCaloRegressor(**common).to(device)
 

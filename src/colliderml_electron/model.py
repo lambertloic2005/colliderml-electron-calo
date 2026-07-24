@@ -266,5 +266,53 @@ class ConvCaloRegressor(ConcatCaloRegressor):
 
         z = self._masked_mean_max(h, mask)                     # (B, 2*conv_dim)
         return self.head(z)
+
+class AttnPoolCaloRegressor(ConcatCaloRegressor):
+    """
+    Same front end (top-cell selection + Fourier embed + transformer encoder),
+    but aggregation is learned-query cross-attention pooling: n_queries trained
+    query vectors attend over the encoder output (padding masked), and the
+    concatenated query outputs feed the MLP head. Permutation-invariant over
+    cells -- removes the energy-rank ordering artifact of the Conv1d head.
+    """
+
+    def __init__(
+        self,
+        max_cells: int = 128,
+        model_dim: int = 256,
+        n_heads: int = 8,
+        n_layers: int = 6,
+        dim_feedforward: int = 1024,
+        dropout: float = 0.1,
+        output_dim: int = 5,
+        high_level_dim: int = 41,
+        n_queries: int = 4,
+    ):
+        super().__init__(
+            max_cells=max_cells, model_dim=model_dim, n_heads=n_heads,
+            n_layers=n_layers, dim_feedforward=dim_feedforward,
+            dropout=dropout, output_dim=output_dim, high_level_dim=high_level_dim,
+        )
+        self.n_queries = n_queries
+        self.queries = nn.Parameter(torch.randn(n_queries, model_dim) * 0.02)
+        self.pool_attn = nn.MultiheadAttention(
+            embed_dim=model_dim, num_heads=n_heads, dropout=dropout, batch_first=True
+        )
+        self.head = nn.Sequential(
+            nn.LayerNorm(n_queries * model_dim),
+            nn.Linear(n_queries * model_dim, 256),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(256, output_dim),
+        )
+
+    def forward(self, x_sampled, x_high_level, mask):
+        x_sampled, x_high_level, mask = self._select_top_cells(
+            x_sampled, x_high_level, mask
+        )
+        h, mask = self.encoder(x_sampled, x_high_level, mask)   # (B, L, D)
+        q = self.queries.unsqueeze(0).expand(h.shape[0], -1, -1)  # (B, Q, D)
+        pooled, _ = self.pool_attn(q, h, h, key_padding_mask=mask)  # (B, Q, D)
+        return self.head(pooled.flatten(start_dim=1))
     
     
