@@ -48,7 +48,6 @@ class ElectronDataset(Dataset):
         use_cluster_features: bool = False,
         max_abs_eta: float | None = None,
         min_abs_eta: float | None = None,
-        num_workers: int = 0,
     ):
         # Read only the requested split via predicate pushdown -- never
         # materialize the full merged parquet. With two ElectronDataset
