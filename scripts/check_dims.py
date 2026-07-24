@@ -12,11 +12,14 @@ p.add_argument("--split",   default="train")
 p.add_argument("--high-level-dim", type=int, default=21,  # <-- the value you set in the train config
                help="must equal the cfg['high_level_dim'] you are about to train with")
 p.add_argument("--output-dim", type=int, default=5)
+p.add_argument("--limit", type=int, default=256,
+               help="rows to load; keeps the preflight off the login node's memory limit")
 args = p.parse_args()
 
 loader = make_loader(
     parquet_path=args.parquet,
     split=args.split,
+    limit=args.limit,
     target_stats_path=args.stats,
     batch_size=8,
     shuffle=False,

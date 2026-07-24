@@ -48,6 +48,7 @@ class ElectronDataset(Dataset):
         use_cluster_features: bool = False,
         max_abs_eta: float | None = None,
         min_abs_eta: float | None = None,
+        limit: int | None = None,
     ):
         # Read only the requested split via predicate pushdown -- never
         # materialize the full merged parquet. With two ElectronDataset
@@ -55,10 +56,14 @@ class ElectronDataset(Dataset):
         # eager pl.read_parquet() + filter-after held a full extra in-memory
         # copy during each construction; on the ~6x larger v2 dataset this
         # transient peak is what triggered the Lyon OOM kills.
+        # Lazy chain: filter and limit are pushed into the parquet reader, so a
+        # small `limit` (preflight/debug) never materializes the full split.
+        lf = pl.scan_parquet(parquet_path)
         if split is not None:
-            df = pl.scan_parquet(parquet_path).filter(pl.col("split") == split).collect()
-        else:
-            df = pl.read_parquet(parquet_path)
+            lf = lf.filter(pl.col("split") == split)
+        if limit is not None:
+            lf = lf.head(limit)
+        df = lf.collect()
 
         if max_abs_eta is not None:
             n0 = df.height
