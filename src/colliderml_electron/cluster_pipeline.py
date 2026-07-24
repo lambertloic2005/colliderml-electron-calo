@@ -108,30 +108,45 @@ def build_cluster_table(
     dR_match: float = 0.1,
     keep_unmatched: bool = False,
     out_path: str | Path = "data/clusters/clusters.parquet",
+    shard_min: int | None = None,
+    shard_max: int | None = None,
+    task_id: int = 0,
+    n_tasks: int = 1,
 ) -> pl.DataFrame:
-    home = os.path.expanduser("~")
-    base = f"{home}/.cache/colliderml/CERN__ColliderML-Release-1"
+    """Truth-free DBSCAN cluster table over a shard range, with striding.
+
+    Shard discovery honours COLLIDERML_DATA_DIR (same rule as the patched
+    pipeline.py); rows for THIS worker's shard slice are held in memory and
+    written once at the end -- bounded because each worker in a chunked build
+    only sees CHUNK_PAIRS / n_tasks shards.
+    """
+    env = os.environ.get("COLLIDERML_DATA_DIR")
+    base_root = Path(env).expanduser() if env else Path.home() / ".cache" / "colliderml"
+    base = str(base_root / "CERN__ColliderML-Release-1")
     p_pat = f"{base}/{channel}_{pileup}_particles/data/{channel}_{pileup}_particles/train-*.parquet"
     c_pat = f"{base}/{channel}_{pileup}_calo_hits/data/{channel}_{pileup}_calo_hits/train-*.parquet"
 
     p_by_idx = {_shard_index(p): p for p in glob.glob(p_pat)}
     c_by_idx = {_shard_index(p): p for p in glob.glob(c_pat)}
     common = sorted(set(p_by_idx) & set(c_by_idx))
+    if shard_min is not None:
+        common = [i for i in common if i >= shard_min]
+    if shard_max is not None:
+        common = [i for i in common if i <= shard_max]
+    common = common[task_id::n_tasks]          # strided slice for this worker
     if not common:
         raise RuntimeError(
-            f"no matched shards. Found {len(p_by_idx)} particles, {len(c_by_idx)} calo_hits."
+            f"no matched shards in range [{shard_min},{shard_max}] for "
+            f"task {task_id}/{n_tasks} under {base}"
         )
-    print(
-        f"Found {len(common)} matched shards "
-        f"(of {len(p_by_idx)} particles / {len(c_by_idx)} calo_hits total)"
-    )
+    print(f"task {task_id}/{n_tasks}: {len(common)} shard pairs "
+          f"(range [{shard_min},{shard_max}]) under {base}")
 
     rows: list[dict] = []
     events_done = 0
-    n_clusters_total = 0
-    n_matched_total = 0
-    n_electrons_total = 0
-    n_electrons_matched = 0
+    n_clusters_total = n_matched_total = 0
+    n_electrons_total = n_electrons_matched = 0
+    n_align_skipped = 0
 
     for shard_pos, idx in enumerate(common):
         if max_events is not None and events_done >= max_events:
@@ -140,28 +155,31 @@ def build_cluster_table(
         p_df = pl.read_parquet(p_by_idx[idx])
         c_df = pl.read_parquet(c_by_idx[idx])
 
+        # --- alignment guard: join calo rows to particle rows BY event_id, never
+        # by position. Closes the known integrity gap inherited from pipeline.py.
+        c_index = {int(e): j for j, e in enumerate(c_df["event_id"].to_list())}
+
         n = p_df.height
         if max_events is not None and events_done + n > max_events:
             n = max_events - events_done
 
         for i in range(n):
             p_row = p_df.row(i, named=True)
-            c_row = c_df.row(i, named=True)
             event_id = int(p_row["event_id"])
+            j = c_index.get(event_id)
+            if j is None:
+                n_align_skipped += 1
+                continue
+            c_row = c_df.row(j, named=True)
 
             cells = all_event_cells(c_row)
             labels = cluster_event_cells(
-                cells,
-                eps=eps,
-                min_samples=min_samples,
-                e_thresh_gev=e_thresh_gev,
-                energy_weighted=energy_weighted,
+                cells, eps=eps, min_samples=min_samples,
+                e_thresh_gev=e_thresh_gev, energy_weighted=energy_weighted,
             )
-
             clusters = list(iter_clusters(labels))
             n_clusters_total += len(clusters)
 
-            # truth electrons (deduplicated on rounded kinematics, as in pipeline.py)
             electrons, seen = [], set()
             for e in prompt_electrons(p_row):
                 key = (round(float(e["px"]), 6), round(float(e["py"]), 6),
@@ -195,15 +213,12 @@ def build_cluster_table(
                 elif keep_unmatched:
                     rows.append(build_cluster_row(
                         event_id, cid, cells, members, None, None))
-
             events_done += 1
 
         del p_df, c_df
-        print(
-            f"  shard {shard_pos + 1}/{len(common)} (idx {idx}): "
-            f"{events_done} events, {n_clusters_total} clusters, "
-            f"{n_matched_total} matched to electrons"
-        )
+        print(f"  shard {shard_pos + 1}/{len(common)} (idx {idx}): "
+              f"{events_done} events, {n_clusters_total} clusters, "
+              f"{n_matched_total} matched, {n_align_skipped} align-skipped")
 
     df = pl.DataFrame(rows)
     out_path = Path(out_path)
@@ -213,12 +228,11 @@ def build_cluster_table(
     eff = (n_electrons_matched / n_electrons_total) if n_electrons_total else 0.0
     print(
         f"\nWrote {df.height} cluster records from {events_done} events to {out_path}\n"
-        f"  clusters found        : {n_clusters_total}\n"
-        f"  clusters matched      : {n_matched_total}\n"
-        f"  truth electrons       : {n_electrons_total}\n"
-        f"  electrons recovered   : {n_electrons_matched} "
-        f"({eff:.1%} matching efficiency)\n"
-        f"  avg clusters/event    : {n_clusters_total / max(events_done,1):.1f}"
+        f"  clusters found      : {n_clusters_total}\n"
+        f"  clusters matched    : {n_matched_total}\n"
+        f"  truth electrons     : {n_electrons_total}\n"
+        f"  electrons recovered : {n_electrons_matched} ({eff:.1%} matching efficiency)\n"
+        f"  events skipped (event_id not in calo shard): {n_align_skipped}"
     )
     return df
 
