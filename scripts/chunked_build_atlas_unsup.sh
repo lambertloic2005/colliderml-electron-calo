@@ -35,6 +35,7 @@ common = idxs("zee_pu200_particles") & idxs("zee_pu200_calo_hits")
 print(sum(1 for i in common if lo <= i <= hi))
 EOF
 }
+
 LO="$SHARD_START"
 while [ "$LO" -le "$SHARD_END" ]; do
     HI=$((LO + CHUNK_PAIRS - 1)); [ "$HI" -gt "$SHARD_END" ] && HI="$SHARD_END"
@@ -70,6 +71,8 @@ while [ "$LO" -le "$SHARD_END" ]; do
     n_parts=$(ls "$PARTS"/part_${LO}_${HI}_task*.parquet 2>/dev/null | wc -l)
     [ "$n_parts" -eq "$expected_parts" ] \
         || { echo "expected $expected_parts parts, found $n_parts -- not deleting raw" >&2; exit 1; }
+
+    if [ "$DELETE_RAW" -eq 1 ]; then
         echo "=== chunk [$LO,$HI]: deleting raw shards ==="
         for cfg in zee_pu200_particles zee_pu200_calo_hits; do
             for idx in $(seq "$LO" "$HI"); do

@@ -133,12 +133,19 @@ def build_cluster_table(
         common = [i for i in common if i >= shard_min]
     if shard_max is not None:
         common = [i for i in common if i <= shard_max]
-    common = common[task_id::n_tasks]          # strided slice for this worker
+    # Empty BEFORE striding = the data genuinely isn't on disk -> hard failure.
     if not common:
         raise RuntimeError(
-            f"no matched shards in range [{shard_min},{shard_max}] for "
-            f"task {task_id}/{n_tasks} under {base}"
+            f"no matched shards in range [{shard_min},{shard_max}] under {base} "
+            f"({len(p_by_idx)} particles / {len(c_by_idx)} calo_hits shards found)"
         )
+    common = common[task_id::n_tasks]
+    # Empty AFTER striding = this worker just drew no shards. Benign, and what
+    # pipeline.py does. Raising here would abort a whole chunk over load balance.
+    if not common:
+        print(f"task {task_id}/{n_tasks}: no shards assigned in range "
+              f"[{shard_min},{shard_max}]; exiting without writing.")
+        return pl.DataFrame()
     print(f"task {task_id}/{n_tasks}: {len(common)} shard pairs "
           f"(range [{shard_min},{shard_max}]) under {base}")
 
@@ -223,6 +230,9 @@ def build_cluster_table(
     df = pl.DataFrame(rows)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    if df.height == 0:
+        print(f"\nNo clusters produced for this task; not writing {out_path}.")
+        return df
     df.write_parquet(out_path)
 
     eff = (n_electrons_matched / n_electrons_total) if n_electrons_total else 0.0
