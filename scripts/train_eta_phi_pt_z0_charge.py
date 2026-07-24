@@ -251,6 +251,13 @@ def evaluate(
 
 def main():
     REGION = os.environ.get("REGION", "full")
+    SEED = int(os.environ.get("SEED", "0"))
+    import random
+    import numpy as np
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
     _REGION_ETA = {
         "full":   dict(min_abs_eta=None, max_abs_eta=3),
         "barrel": dict(min_abs_eta=None, max_abs_eta=1.7),
@@ -274,19 +281,19 @@ def main():
         "target_cols": ["truth_eta", "truth_phi", "truth_log_pt", "truth_z0"],
 
         "max_cells": 128,
-        "model_dim": 128,
-        "n_heads": 4,
-        "n_layers": 3,
-        "dim_feedforward": 256,
+        "model_dim": 256,
+        "n_heads": 8,
+        "n_layers": 6,
+        "dim_feedforward": 1024,
         "dropout": 0.1,
         "output_dim": 5,
 
-        "batch_size": 64,
-        "n_epochs": 100,
-        "min_epochs": 100,
-        "learning_rate": 3e-4,
+        "batch_size": 256,
+        "n_epochs": 120,
+        "min_epochs": 120,
+        "learning_rate": 5e-4,
         "weight_decay": 1e-4,
-        "warmup_epochs": 1,
+        "warmup_epochs": 5,
 
         "eta_weight": 1.0,
         "phi_weight": 1.0,
@@ -298,10 +305,16 @@ def main():
         "watch_gradients": False,
 
         "model_type": "conv",
-        "conv_dim": 128,
+        "conv_dim": 256,
         "kernel_size": 5,
 
         "feature_set": "xyz_loge_eta_phi_theta",
+
+        "seed": SEED,
+
+        "num_workers": 8,
+        "grad_clip": 5.0,
+        "use_amp": True,
     }
 
     with wandb.init(
@@ -337,7 +350,8 @@ def main():
             use_angular_features=cfg["use_angular_features"],
             use_cluster_features=cfg["use_cluster_features"],
             max_abs_eta=cfg.get("max_abs_eta"),
-            min_abs_eta=cfg.get("min_abs_eta")
+            min_abs_eta=cfg.get("min_abs_eta"),
+            num_workers=cfg.get("num_workers", 0)
         )
 
         val_loader = make_loader(
@@ -349,7 +363,8 @@ def main():
             use_angular_features=cfg["use_angular_features"],
             use_cluster_features=cfg["use_cluster_features"],
             max_abs_eta=cfg.get("max_abs_eta"),
-            min_abs_eta=cfg.get("min_abs_eta")
+            min_abs_eta=cfg.get("min_abs_eta"),
+            num_workers=cfg.get("num_workers", 0)
         )
 
         common = dict(
@@ -414,16 +429,18 @@ def main():
             for batch_idx, batch in enumerate(train_loader):
                 batch = move_batch_to_device(batch, device)
 
-                pred = model(
-                    batch["x_sampled"],
-                    batch["x_high_level"],
-                    batch["mask"],
-                )
+                amp_on = bool(cfg.get("use_amp", False)) and device.type == "cuda"
+                with torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=amp_on):
+                    pred = model(
+                        batch["x_sampled"],
+                        batch["x_high_level"],
+                        batch["mask"],
+                    )
 
                 target = batch["target"][:, [ETA_INDEX, PHI_INDEX, LOGPT_INDEX, Z0_INDEX]]
 
                 loss, logs = loss_fn(
-                    pred, target,
+                    pred.float(), target,
                     batch["phi_centroid"], batch["eta_centroid"], batch["log_sum_et"],
                     batch["z0_anchor"], batch["truth_charge"],
                 )
@@ -431,7 +448,9 @@ def main():
                 optimizer.zero_grad()
                 loss.backward()
 
-                grad_norm = compute_grad_norm(model)
+                grad_norm = torch.nn.utils.clip_grad_norm_(
+                    model.parameters(), cfg.get("grad_clip", 5.0)
+                ).item()
 
                 optimizer.step()
 

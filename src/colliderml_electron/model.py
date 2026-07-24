@@ -266,3 +266,5 @@ class ConvCaloRegressor(ConcatCaloRegressor):
 
         z = self._masked_mean_max(h, mask)                     # (B, 2*conv_dim)
         return self.head(z)
+    
+    

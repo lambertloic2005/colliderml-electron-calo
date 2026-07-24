@@ -48,6 +48,7 @@ class ElectronDataset(Dataset):
         use_cluster_features: bool = False,
         max_abs_eta: float | None = None,
         min_abs_eta: float | None = None,
+        num_workers: int = 0,
     ):
         # Read only the requested split via predicate pushdown -- never
         # materialize the full merged parquet. With two ElectronDataset
@@ -346,4 +347,7 @@ def make_loader(
         shuffle=shuffle,
         num_workers=num_workers,
         collate_fn=collate_pad,
+        pin_memory=torch.cuda.is_available(),
+        persistent_workers=(num_workers > 0),
+        drop_last=shuffle,   # only drops on the train loader; stabilizes batch statistics
     )
