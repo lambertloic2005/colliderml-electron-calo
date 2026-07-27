@@ -7,7 +7,7 @@
 #SBATCH --job-name=trainTestEtaPhiPtZ0Charge
 #SBATCH --output=%x.o%j
 #SBATCH --error=%x.e%j
-#SBATCH --time=12:00:00
+#SBATCH --time=20:00:00
 #SBATCH --mem=64G
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
