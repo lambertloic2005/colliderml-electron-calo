@@ -274,10 +274,10 @@ def main():
         "target_cols": ["truth_eta", "truth_phi", "truth_log_pt", "truth_z0"],
 
         "max_cells": 128,
-        "model_dim": 128,
-        "n_heads": 4,
-        "n_layers": 3,
-        "dim_feedforward": 256,
+        "model_dim": 256,
+        "n_heads": 8,
+        "n_layers": 6,
+        "dim_feedforward": 1024,
         "dropout": 0.1,
         "output_dim": 5,
 
@@ -298,7 +298,7 @@ def main():
         "watch_gradients": False,
 
         "model_type": "conv",
-        "conv_dim": 128,
+        "conv_dim": 256,
         "kernel_size": 5,
 
         "feature_set": "xyz_loge_eta_phi_theta",
