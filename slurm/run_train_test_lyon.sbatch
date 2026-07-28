@@ -37,8 +37,9 @@ echo "========================================"
 # so the env lives under THRONG; override with CONDA_ENV=... if needed).
 CONDA_ENV="${CONDA_ENV:-$HOME/envs/colliderml}"
 export REGION="${REGION:-full}"
+export SEED="${SEED:-0}"
 
-RUN_NAME="eta_phi_pt_z0_charge_${REGION}_$(date +%Y%m%d_%H%M%S)"
+RUN_NAME="eta_phi_pt_z0_charge_${REGION}_seed${SEED}_$(date +%Y%m%d_%H%M%S)"
 
 TRAIN_SCRIPT="scripts/train_eta_phi_pt_z0_charge.py"
 TEST_SCRIPT="scripts/test_eta_phi_pt_z0_charge.py"

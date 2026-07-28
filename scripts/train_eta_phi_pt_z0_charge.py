@@ -258,6 +258,14 @@ def main():
     }
     if REGION not in _REGION_ETA:
         raise ValueError(f"REGION must be 'full', 'barrel' or 'endcap', got {REGION!r}")
+    
+    SEED = int(os.environ.get("SEED", "0"))
+    import random
+    import numpy as np
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    torch.cuda.manual_seed_all(SEED)
 
     config = {
         "architecture": "concat_transformer_eta_phi_pt_z0_charge",
@@ -302,6 +310,8 @@ def main():
         "kernel_size": 5,
 
         "feature_set": "xyz_loge_eta_phi_theta",
+
+        "seed": SEED,
     }
 
     with wandb.init(
