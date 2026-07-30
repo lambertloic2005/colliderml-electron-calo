@@ -290,8 +290,12 @@ def main():
         "output_dim": 5,
 
         "batch_size": 96,
-        "n_epochs": 200,
-        "min_epochs": 200,
+        # Step-matched to the supervised attnpool-200ep run. N_train is 77,270
+        # here vs 124,906 supervised, so 200 epochs would give 161,000 optimizer
+        # steps against 260,400 -- a 38% shortfall on a charge head documented to
+        # still be improving at 260k steps. 324 epochs gives 260,820.
+        "n_epochs": 324,
+        "min_epochs": 324,
         "learning_rate": 3e-4,
         "weight_decay": 1e-4,
         "warmup_epochs": 1,

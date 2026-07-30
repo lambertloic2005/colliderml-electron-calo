@@ -39,7 +39,8 @@ CONDA_ENV="${CONDA_ENV:-$HOME/envs/colliderml}"
 export REGION="${REGION:-full}"
 export SEED="${SEED:-0}"
 
-RUN_NAME="eta_phi_pt_z0_charge_${REGION}_seed${SEED}_$(date +%Y%m%d_%H%M%S)"
+RUN_TAG="${RUN_TAG:-}"
+RUN_NAME="eta_phi_pt_z0_charge_${RUN_TAG:+${RUN_TAG}_}${REGION}_seed${SEED}_$(date +%Y%m%d_%H%M%S)"
 
 TRAIN_SCRIPT="scripts/train_eta_phi_pt_z0_charge.py"
 TEST_SCRIPT="scripts/test_eta_phi_pt_z0_charge.py"
@@ -133,6 +134,21 @@ mkdir -p "$JOB_WORKDIR/data/electrons"
 echo "Copying z0/charge data and target stats..."
 rsync -av "$SOURCE_Z0_CHARGE_FILE" "$JOB_WORKDIR/data/electrons/electrons_z0_charge.parquet"
 rsync -av "$SOURCE_STATS_FILE" "$JOB_WORKDIR/data/electrons/target_stats.json"
+
+# Provenance: every dataset stages to the identical filename
+# data/electrons/electrons.parquet, so nothing in the checkpoint config records
+# which one was used. Write it down. Checked before trusting any metric.
+{
+  echo "run_name=$RUN_NAME"
+  echo "source_parquet=$SOURCE_Z0_CHARGE_FILE"
+  echo "source_stats=$SOURCE_STATS_FILE"
+  echo "parquet_md5=$(md5sum "$SOURCE_Z0_CHARGE_FILE" | cut -d' ' -f1)"
+  echo "stats_md5=$(md5sum "$SOURCE_STATS_FILE" | cut -d' ' -f1)"
+  echo "git_branch=$(cd "$PROJECT_DIR" && git branch --show-current 2>/dev/null || echo NA)"
+  echo "git_commit=$(cd "$PROJECT_DIR" && git rev-parse HEAD 2>/dev/null || echo NA)"
+  echo "git_dirty=$(cd "$PROJECT_DIR" && git status --porcelain 2>/dev/null | wc -l)"
+  echo "region=$REGION seed=$SEED"
+} | tee "$RUN_DIR/provenance.txt"
 
 # The training script currently expects:
 #   data/electrons/electrons.parquet
