@@ -40,7 +40,11 @@ import wandb
 from sklearn.metrics import roc_auc_score
 
 from colliderml_electron.dataset import make_loader, TARGET_COLS
-from colliderml_electron.model import ConcatCaloRegressor, ConvCaloRegressor
+from colliderml_electron.model import (
+    ConcatCaloRegressor,
+    ConvCaloRegressor,
+    AttnPoolCaloRegressor,
+)
 from colliderml_electron.resolution import gaussian_resolution, plot_residual_fit
 
 ETA_INDEX = TARGET_COLS.index("truth_eta")
@@ -216,9 +220,13 @@ def main():
         dim_feedforward=config["dim_feedforward"], dropout=config["dropout"],
         output_dim=config["output_dim"], high_level_dim=config["high_level_dim"],
     )
-    if config.get("model_type", "concat") == "conv":
+    model_type = config.get("model_type", "concat")
+    if model_type == "conv":
         model = ConvCaloRegressor(**common, conv_dim=config["conv_dim"],
                                   kernel_size=config["kernel_size"])
+    elif model_type == "attnpool":
+        model = AttnPoolCaloRegressor(**common,
+                                      n_queries=config.get("n_queries", 4))
     else:
         model = ConcatCaloRegressor(**common)
 
