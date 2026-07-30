@@ -120,10 +120,33 @@ def main() -> None:
 
     # Duplicate-electron guard: catches a shard processed by two tasks
     # (e.g. a part file merged twice) before it poisons training.
-    dup_e = df.group_by(["event_id", "particle_id"]).len().filter(pl.col("len") > 1)
+    # Row-identity key. The supervised table (pipeline.build_electron_table) keys
+    # rows by (event_id, particle_id). The truth-free cluster table
+    # (cluster_pipeline.build_cluster_table) has no particle_id -- one row is one
+    # DBSCAN cluster -- and keys rows by (event_id, cluster_id). Pick whichever
+    # exists so this script harmonizes both datasets.
+    if "particle_id" in df.columns:
+        row_key = ["event_id", "particle_id"]
+    elif "cluster_id" in df.columns:
+        row_key = ["event_id", "cluster_id"]
+    else:
+        sys.exit("ERROR: table has neither particle_id nor cluster_id -- cannot "
+                 "verify row uniqueness; refusing to harmonize.")
+    dup_e = df.group_by(row_key).len().filter(pl.col("len") > 1)
     if dup_e.height:
-        sys.exit(f"ERROR: {dup_e.height} duplicated (event_id, particle_id) pairs "
-                 f"in v2 -- check the parts glob / re-run merge before harmonizing.")
+        sys.exit(f"ERROR: {dup_e.height} duplicated {tuple(row_key)} rows -- "
+                 f"check the parts glob / re-run merge before harmonizing.")
+
+    # Cluster table only: match_clusters_to_electrons() gives each truth electron
+    # at most one cluster per event, so a repeated truth electron can only come
+    # from a shard merged twice. Catch it here -- it would silently duplicate
+    # training targets and break the paired comparison against the supervised set.
+    if "cluster_id" in df.columns and "particle_id" not in df.columns:
+        dup_t = (df.group_by(["event_id", "truth_px", "truth_py", "truth_pz"])
+                   .len().filter(pl.col("len") > 1))
+        if dup_t.height:
+            sys.exit(f"ERROR: {dup_t.height} truth electrons are claimed by more "
+                     f"than one cluster -- duplicated part files in the merge glob.")
 
     in_v1 = np.isin(v2_events, v1_map["event_id"].to_numpy())
     missing_from_v2 = v1_map.height - int(in_v1.sum())
