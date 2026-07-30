@@ -45,3 +45,6 @@ runs/
 trainTestEtaPhiPtZ0Charge.o*
 trainTestEtaPhiPtZ0Charge.e*
 runs/
+rescoreAttn.o*
+rescoreAttn.e*
+rescore_attn.sbatch

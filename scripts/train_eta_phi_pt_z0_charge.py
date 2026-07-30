@@ -290,8 +290,8 @@ def main():
         "output_dim": 5,
 
         "batch_size": 96,
-        "n_epochs": 120,
-        "min_epochs": 120,
+        "n_epochs": 200,
+        "min_epochs": 200,
         "learning_rate": 3e-4,
         "weight_decay": 1e-4,
         "warmup_epochs": 1,
