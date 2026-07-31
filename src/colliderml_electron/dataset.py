@@ -1,6 +1,5 @@
 # =============================================================================
 # JOB 1 -- RETREAT CONTROL -- branch: retreat-control  (created off pointing-upgrade)
-# Paste as: src/colliderml_electron/dataset.py   (keep this exact filename/path)
 # Content: baseline 41-feature set (K=6, phi_slope NOT exposed), NO pT floor,
 #          variance floors + clip + all safety hardening retained.
 # Pairs with: the retreat-control train script (high_level_dim = 41).
