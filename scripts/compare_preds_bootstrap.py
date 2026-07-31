@@ -29,6 +29,13 @@ from colliderml_electron.resolution import gaussian_resolution  # noqa: E402
 EXPECTED_MAX_ABS_ETA = 1.7   # candidate barrel acceptance
 EXPECTED_MIN_PT = 10.0       # candidate pT floor [GeV]
 ALIGN_MAX_DROP_FRAC = 0.01
+# --cross-dataset: the same model family scored on two different RECONSTRUCTIONS
+# of the same events (supervised-DBSCAN vs truth-free DBSCAN). There the
+# unmatched fraction is not a scoring bug -- it is the cluster-matching
+# inefficiency, a physics result in its own right -- so the guard is relaxed and
+# the loss is reported instead of refused. Never use this flag to paper over a
+# mis-scored population WITHIN one dataset.
+CROSS_DATASET_MAX_DROP_FRAC = 0.60
 
 
 def _auc(scores: np.ndarray, pos: np.ndarray) -> float:
@@ -114,8 +121,11 @@ def _metrics(d: dict, idx: np.ndarray) -> dict:
 
 
 def main() -> None:
-    args = [a for a in sys.argv[1:] if a != "--align"]
-    align = "--align" in sys.argv[1:]
+    flags = {"--align", "--cross-dataset"}
+    args = [a for a in sys.argv[1:] if a not in flags]
+    cross = "--cross-dataset" in sys.argv[1:]
+    align = cross or ("--align" in sys.argv[1:])
+    max_drop = CROSS_DATASET_MAX_DROP_FRAC if cross else ALIGN_MAX_DROP_FRAC
     if len(args) < 2:
         sys.exit(__doc__)
     path_a, path_b = Path(args[0]), Path(args[1])
@@ -180,12 +190,25 @@ def main() -> None:
                 "Only if the mismatch is a handful of boundary events, re-run "
                 "with --align."
             )
-        if drop_frac > ALIGN_MAX_DROP_FRAC:
+        if drop_frac > max_drop:
             sys.exit(
-                f"\n--align refused: {drop_frac:.1%} of events unmatched "
-                f"(limit {ALIGN_MAX_DROP_FRAC:.0%}). This is a wrong "
-                "population, not a boundary effect. Fix the scoring step."
+                f"\nrefused: {drop_frac:.1%} of events unmatched "
+                f"(limit {max_drop:.0%}). "
+                + ("Even for a cross-dataset comparison that is too large to be "
+                   "cluster-matching inefficiency -- check both files were scored "
+                   "on the same split with the same MIN_PT_EVAL / eta cuts."
+                   if cross else
+                   "This is a wrong population, not a boundary effect. "
+                   "Fix the scoring step.")
             )
+        if cross:
+            print(f"\n[--cross-dataset] A-only {unmatched_a} "
+                  f"({unmatched_a / max(len(keys_a), 1):.1%}), B-only "
+                  f"{unmatched_b} ({unmatched_b / max(len(keys_b), 1):.1%}).\n"
+                  f"  The A-only fraction is the ACCEPTANCE loss of dataset B. "
+                  f"Report it next to the conditional metrics below -- the "
+                  f"bootstrap measures reconstruction quality on survivors only "
+                  f"and cannot see it.")
         print(f"\n[--align] proceeding on the {len(ia)} matched events "
               f"(dropped {unmatched_a} from A, {unmatched_b} from B)")
 
