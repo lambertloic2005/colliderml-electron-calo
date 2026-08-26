@@ -500,12 +500,14 @@ def main():
             if selection_score < best_val_loss:
                 best_val_loss = selection_score
                 best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+                best_loss_state = {k: v.detach().cpu().clone() for k, v in loss_fn.state_dict().items()}
                 epochs_no_improve = 0
                 Path("checkpoints").mkdir(exist_ok=True)
                 _tmp = Path("checkpoints/ruche_eta_phi_pt_z0_charge.pt.tmp")
                 torch.save(
                     {
                         "model_state_dict": best_state,
+                        "loss_state_dict": best_loss_state,
                         "config": dict(cfg),
                         "target_cols": ["truth_eta", "truth_phi", "truth_log_pt", "truth_z0"],
                         "best_val_loss": best_val_loss,
