@@ -219,6 +219,8 @@ def main():
         n_heads=config["n_heads"], n_layers=config["n_layers"],
         dim_feedforward=config["dim_feedforward"], dropout=config["dropout"],
         output_dim=config["output_dim"], high_level_dim=config["high_level_dim"],
+        per_region_proj=config.get("per_region_proj", False),
+        region_eta_boundary=config.get("region_eta_boundary", 1.5),
     )
     model_type = config.get("model_type", "concat")
     if model_type == "conv":

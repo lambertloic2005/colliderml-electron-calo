@@ -28,6 +28,8 @@ class ConcatCaloRegressor(nn.Module):
     dropout: float = 0.1,
     output_dim: int = 6,
     high_level_dim: int = 7,
+    per_region_proj: bool = False,
+    region_eta_boundary: float = 1.5,
     ):
         super().__init__()
 
@@ -49,6 +51,8 @@ class ConcatCaloRegressor(nn.Module):
             n_layers=n_layers,
             dim_feedforward=dim_feedforward,
             dropout=dropout,
+            per_region_proj=per_region_proj,
+            region_eta_boundary=region_eta_boundary,
         )
 
         concat_dim = max_cells * model_dim
@@ -287,11 +291,14 @@ class AttnPoolCaloRegressor(ConcatCaloRegressor):
         output_dim: int = 5,
         high_level_dim: int = 41,
         n_queries: int = 4,
+        per_region_proj: bool = False,
+        region_eta_boundary: float = 1.5,
     ):
         super().__init__(
             max_cells=max_cells, model_dim=model_dim, n_heads=n_heads,
             n_layers=n_layers, dim_feedforward=dim_feedforward,
             dropout=dropout, output_dim=output_dim, high_level_dim=high_level_dim,
+            per_region_proj=per_region_proj, region_eta_boundary=region_eta_boundary,
         )
         self.n_queries = n_queries
         self.queries = nn.Parameter(torch.randn(n_queries, model_dim) * 0.02)

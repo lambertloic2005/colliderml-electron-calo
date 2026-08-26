@@ -313,6 +313,9 @@ def main():
         "conv_dim": 128,
         "kernel_size": 5,
         "n_queries": 4,
+        # per-region input projection ablation (env-driven, matches REGION/SEED pattern)
+        "per_region_proj": os.environ.get("PER_REGION_PROJ", "0") == "1",
+        "region_eta_boundary": 1.5,
 
         "feature_set": "xyz_loge_eta_phi_theta",
 
@@ -372,6 +375,8 @@ def main():
             n_heads=cfg["n_heads"], n_layers=cfg["n_layers"],
             dim_feedforward=cfg["dim_feedforward"], dropout=cfg["dropout"],
             output_dim=cfg["output_dim"], high_level_dim=cfg["high_level_dim"],
+            per_region_proj=cfg.get("per_region_proj", False),
+            region_eta_boundary=cfg.get("region_eta_boundary", 1.5),
         )
         model_type = cfg.get("model_type", "concat")
         if model_type == "conv":
