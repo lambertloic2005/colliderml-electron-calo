@@ -545,6 +545,12 @@ def main():
                     "best_val_phi_loss": best_val_phi_loss,
                     "best_val_pt_rel_rmse": best_val_pt_rel_rmse,
                     "epoch": epoch,
+
+                    # learned homoscedastic scales, in each task's working units
+                    "sigma/eta":   torch.exp(loss_fn.log_sigma[0]).item(),
+                    "sigma/phi":   torch.exp(loss_fn.log_sigma[1]).item(),
+                    "sigma/logpt": torch.exp(loss_fn.log_sigma[2]).item(),
+                    "sigma/z0":    torch.exp(loss_fn.log_sigma[3]).item(),
                 },
                 step=global_step,
             )
@@ -576,6 +582,7 @@ def main():
                 "best_val_loss": best_val_loss,
                 "best_val_phi_loss": best_val_phi_loss,
                 "best_val_pt_rel_rmse": best_val_pt_rel_rmse,
+                "loss_state_dict": loss_fn.state_dict(),
             },
             checkpoint_path,
         )
