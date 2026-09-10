@@ -34,3 +34,6 @@ checkpoints/
 .vscode/
 .idea/
 .DS_Store
+
+# Prediction arrays (reproducible from checkpoints)
+*preds.npz
