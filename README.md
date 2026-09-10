@@ -222,8 +222,8 @@ with `charge_weight = 1.0` and `charge_label = 1` for positrons (`q = +1`).
   resolution and the beamspot-prior RMS. A useful model must beat both.
 - charge: ROC AUC and accuracy versus pT, plus calibration.
 
-`z0` sits near its calorimeter ceiling: barrel `z0` RMSE is ~38.5 mm against a
-~55.7 mm beamspot prior. Endcap charge is physics-limited, because forward
+`z0` sits near its calorimeter ceiling: barrel z0 RMSE is ~39 mm (barrel) to ~42-47 mm (full acceptance)
+against a ~54 mm beamspot prior. Endcap charge is physics-limited, because forward
 trajectories nearly parallel to the solenoid field make the azimuthal bend, and
 hence the charge sign, intrinsically hard to resolve.
 
@@ -333,8 +333,9 @@ and calibration plots, and `test_metrics.json` under `results/`.
 Any difference reported as a result is first run through the pre-registered
 paired bootstrap (`compare_preds_bootstrap.py`, 2000 resamples). Evaluation
 criteria and the comparison population are fixed before results are examined.
-Seed variance on the v2 supervised data is about `sd = 0.0065` in barrel charge
-AUC. Locally trained checkpoints from secondary machines are not entered into the
+Seed variance across the tracked barrel benchmark seeds is about `sd = 0.017`
+in charge AUC; an earlier `sd = 0.0065` working value is unreconciled and should
+be checked against W&B before being quoted. Locally trained checkpoints from secondary machines are not entered into the
 summary comparisons.
 
 ## Status
