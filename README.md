@@ -2,501 +2,355 @@
 
 Machine-learning experiments on the calorimeter portion of the CERN ColliderML
 Release 1 dataset, focused on reconstructing prompt-electron kinematics from
-calorimeter showers.
+calorimeter showers alone.
 
-The current workflow uses an idealized DBSCAN-cleaned per-electron dataset:
-
-```text
-data/electrons/electrons_dbscan.parquet
-```
-
-The model is trained to predict four physics quantities per electron:
+The scientific question is how much tracker-like information can be recovered
+from a calorimeter shower with no tracker input. The model is trained to predict
+five per-electron quantities from calorimeter cells only:
 
 - pseudorapidity, `eta`
-- azimuthal angle, `phi`, predicted under **two charge hypotheses** (electron and
-  positron), because the magnetic field displaces the shower differently for the
-  two charges
+- azimuthal angle, `phi`
 - transverse momentum, `pT`, trained through `log(pT)`
 - longitudinal impact parameter, `z0`
+- electric charge sign, `q`
 
-Every quantity is predicted as a **residual from a physics-motivated anchor**
-rather than from scratch (see "Anchored residual predictions" below).
+`eta`, `phi`, `pT`, and `z0` are predicted as residuals from physics-motivated
+anchors (see "Anchored residual predictions"). Charge is a binary classification
+output.
 
 ## Project goal
 
-The long-term goal is to study how much tracker-like information can be inferred
-from calorimeter showers alone. The four targets above span both the directional
-information a calorimeter measures well (`eta`, `phi`) and the
-harder, more tracker-like information (`pT`, and especially the longitudinal
-impact parameter `z0`).
-
-In the current workflow, the specific goal is:
-
-```text
-DBSCAN-cleaned calorimeter shower -> truth eta, truth phi, truth pT, truth z0
-```
-
-This is not yet a fully realistic detector-level reconstruction pipeline. The
-DBSCAN cleaning is idealized and supervised: it is used to create a cleaner
-per-electron dataset so the model can be tested on how well it learns from
-calorimeter shower information.
-
-## Current workflow
-
-```text
-ColliderML Release 1 data
-        |
-        v
-Load particle and calorimeter-hit tables
-        |
-        v
-Select prompt electrons
-        |
-        v
-Collect calorimeter cells associated with each prompt electron
-        |
-        v
-Apply idealized DBSCAN shower cleaning
-        |
-        v
-Save one row per electron (with truth eta/phi/log_pt/z0/charge)
-        |
-        v
-Assign train / validation / test splits
-        |
-        v
-Compute target normalization statistics
-        |
-        v
-Train eta / phi / pT / z0 model (two phi charge heads)
-        |
-        v
-Evaluate residuals and resolution plots
-```
-
-The main training table is `data/electrons/electrons_dbscan.parquet`. This is
-different from the earlier cone-based table `data/electrons/electrons.parquet`.
-For the current workflow, the training and test tables should both be built with
-DBSCAN cleaning so that training and evaluation see the same kind of shower.
-
-## What the model learns
-
-Each row in `electrons_dbscan.parquet` corresponds to one prompt electron.
-
-The input is a variable-length set of DBSCAN-cleaned calorimeter cells. The
-target is the truth prompt-electron kinematics from the ColliderML particle
-table.
-
-The model does not receive truth `eta`, `phi`, `pT`, or `z0` as input. Truth
-values are used only as supervised labels during training and evaluation. The
-truth charge is used during training to route the two phi heads, and during
-evaluation it is used to select which phi head to read out (in a realistic
-pipeline the charge would come from track matching).
-
-## Model inputs
-
-For batching and speed, each electron keeps at most `max_cells = 128` cells, the
-highest-energy cells from the DBSCAN-cleaned shower. The cluster-level features
-below are computed over the **full** cleaned shower before this truncation, so
-the model still sees the total shower energy even when only the 128 hottest
-cells are passed individually.
-
-Before features are built, the event is rotated in azimuth so that the
-energy-weighted phi centroid sits at `phi = 0`. This gives every shower a
-canonical azimuthal frame and keeps the per-cell coordinates in a consistent
-range.
-
-### Per-cell positional inputs (Fourier-embedded)
-
-For each selected cell, the 3D position (in the centroid-rotated frame):
-
-```text
-cell_x
-cell_y
-cell_z
-```
-
-### Per-cell high-level inputs
-
-```text
-log(cell_e_calibrated)
-cell_eta
-sin(cell_phi - phi_centroid)
-cos(cell_phi - phi_centroid)
-theta
-cos(theta)
-detector one-hot (6 subsystems)
-```
-
-The `sin`/`cos` of the centroid-relative phi is used because phi is periodic.
-
-### Cluster-level inputs (broadcast to every cell)
-
-Computed from the full DBSCAN-cleaned shower and appended to every cell:
-
-```text
-log(total calibrated cluster energy)
-log(total transverse-energy proxy)
-log(number of cells)
-phi shower-shape width (std_phi)
-phi shower-shape skewness (skew_phi)
-eta shower-shape width (std_eta)
-eta shower-shape skewness (skew_eta)
-z0 pointing anchor (in metres)
-shower pointing slope dz/dr
-```
-
-The phi skewness matters physically: the bremsstrahlung tail is asymmetric in a
-charge-dependent way, so the sign of `skew_phi` carries information related to
-the charge.
-
-The full high-level input is 21-dimensional (12 per-cell + 9 cluster-level).
-
-## Anchored residual predictions
-
-Instead of regressing the absolute kinematics, the model predicts a small
-**correction** to a physics-motivated anchor for each target. This makes every
-task easier because the anchor is already a strong first estimate.
-
-```text
-eta    = eta_centroid + delta_eta
-phi    = phi_centroid + delta_phi      (two charge hypotheses, see below)
-log_pt = log_sum_et   + delta_log_pt
-z0     = z0_anchor    + delta_z0
-```
-
-The anchors are:
-
-- `eta_centroid`: the energy-weighted average of the cell pseudorapidities.
-- `phi_centroid`: the energy-weighted azimuth, `atan2(<sin phi>, <cos phi>)`.
-- `log_sum_et`: the log of the total transverse-energy proxy of the shower. For a
-  contained electromagnetic shower this is already close to `log(pT)`.
-- `z0_anchor`: an energy-weighted least-squares "pointing" fit of cell `z` versus
-  cell `r`, extrapolated to `r = 0`. A straight shower points back along the
-  electron flight direction to its production `z`. Because the magnetic field
-  bends tracks in the transverse plane, the `r`-`z` projection used here is
-  approximately unaffected by bending, which makes this a clean anchor for `z0`.
-
-## Two charge hypotheses for phi
-
-A charged particle is bent in azimuth by the solenoidal field, and the
-calorimeter shower (including its bremsstrahlung tail) is displaced from the true
-electron direction in a charge-dependent way. An electron and a positron of the
-same momentum are displaced in **opposite** azimuthal directions.
-
-The energy-weighted `phi_centroid` therefore sits on the wrong side of the truth
-by an amount whose sign depends on the charge. To handle this without knowing the
-charge from the calorimeter alone, the model outputs two phi corrections:
-
-```text
-delta_phi_e   phi correction under the electron  hypothesis (q = -1)
-delta_phi_p   phi correction under the positron  hypothesis (q = +1)
-```
-
-The two heads are trained with mirror symmetry. Writing the true residual as
-`d = wrapped_delta(true_phi, phi_centroid)`:
-
-```text
-electron head target =  d  for true electrons,  -d  for true positrons
-positron head target = -d  for true electrons,   d  for true positrons
-```
-
-At evaluation, the head matching the (externally supplied) truth charge is read
-out as the physics phi. The test script also reports the wrong-charge selection,
-which measures the cost of a charge misassignment.
-
-## Longitudinal impact parameter z0
-
-The truth `z0` label is the production-vertex `z` of the prompt electron. For a
-prompt particle originating on the beamline, this is the quantity a tracker would
-reconstruct as the longitudinal impact parameter.
-
-`z0` is predicted as a correction to the calorimeter pointing anchor described
-above. Two baselines are reported at evaluation time:
-
-- the anchor-only `z0` resolution (model head set to zero), and
-- the beamspot prior, i.e. the RMS of `z0` with no model at all.
-
-A useful model must beat both: it must improve on the raw pointing anchor, and it
-must do better than simply predicting the center of the beamspot.
-
-## Model output
-
-The model produces five values, all of them **residuals** in physical units:
-
-```text
-[delta_eta, delta_phi_e, delta_phi_p, delta_log_pt, delta_z0]
-```
-
-Decoding at evaluation:
-
-```text
-pred_eta    = eta_centroid + delta_eta
-pred_phi_e  = wrap(phi_centroid + delta_phi_e)        # electron hypothesis
-pred_phi_p  = wrap(phi_centroid + delta_phi_p)        # positron hypothesis
-pred_phi    = head selected by truth charge           # physics phi
-pred_pt     = exp(log_sum_et + delta_log_pt)          # GeV
-pred_z0     = z0_anchor + delta_z0                    # mm
-```
-
-## Loss function
-
-Each target uses a Huber (smooth-L1) loss on its anchor residual, which is more
-robust to shower outliers than plain MSE. The per-target transition points are:
-
-```text
-eta    : Huber(delta=0.1)
-phi    : Huber(delta=0.05)   on the wrapped angular error of each head
-log_pt : Huber(delta=0.2)    (~20% in pT)
-z0     : Huber(delta=20 mm)
-```
-
-The phi loss averages the two heads:
-
-```text
-phi_loss = 0.5 * ( Huber(wrap(delta_phi_e - electron_head_target)) +
-                   Huber(wrap(delta_phi_p - positron_head_target)) )
-```
-
-The four task losses are combined as a **weighted geometric mean** rather than a
-plain sum:
-
-```text
-total_loss = exp( ( w_eta   * log(eta_loss)
-                  + w_phi   * log(phi_loss)
-                  + w_logpt * log(logpt_loss)
-                  + w_z0    * log(z0_loss) ) / (w_eta + w_phi + w_logpt + w_z0) )
-```
-
-The geometric mean is scale-invariant, so tasks with very different natural units
-(radians, eta units, log-pT, millimetres) are balanced automatically without
-hand-tuning per-task weights. Note that because all four tasks share this single
-combined loss, adding or removing a target slightly changes the effective
-weighting of the others.
-
-## Why total energy helps pT
-
-For a relativistic electron, energy and momentum are closely related:
-
-```text
-pT = p sin(theta),    and for high energy   p ≈ E,   so   pT ≈ E sin(theta)
-```
-
-The model therefore needs both the total shower energy and the shower direction.
-The transverse-energy anchor `log_sum_et` supplies the energy scale, while the
-energy-weighted centroid supplies the direction.
-
-## Repository structure
-
-```text
-.
-├── checkpoints/                  # Saved model checkpoints
-├── data/                         # Local generated data
-├── docs/                         # Notes and documentation
-├── notebooks/                    # Jupyter notebooks
-├── results/                      # Evaluation plots and metrics
-├── scripts/                      # Command-line scripts
-├── src/colliderml_electron/      # Main Python package
-├── slurm/                        # SLURM batch scripts (ruche)
-├── pyproject.toml
-├── requirements.txt
-├── uv.lock
-└── README.md
-```
-
-Important source files:
-
-```text
-src/colliderml_electron/io.py
-src/colliderml_electron/coords.py
-src/colliderml_electron/calibration.py
-src/colliderml_electron/pipeline.py
-src/colliderml_electron/cluster.py
-src/colliderml_electron/cluster_pipeline.py
-src/colliderml_electron/dataset.py
-src/colliderml_electron/model.py
-src/colliderml_electron/resolution.py
-src/colliderml_electron/splits.py
-src/colliderml_electron/stats.py
-```
-
-Important scripts:
-
-```text
-scripts/build_electron_dataset.py
-scripts/train_eta_phi_pt_z0_charge.py
-scripts/test_eta_phi_pt_z0_charge.py
-scripts/plot_predictions.py
-scripts/check_predictions.py
-scripts/check_splits.py
-scripts/diagnose_phi.py
-scripts/diagnose_matching.py
-```
-
-## Setup
-
-This project expects Python 3.10 or 3.11.
-
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-pip install -e .
-```
-
-If needed, install from the requirements file:
-
-```bash
-pip install -r requirements.txt
-```
+`eta` and `phi` are directions a calorimeter measures relatively well. `pT`,
+`z0`, and the charge sign are the harder, more tracker-like quantities. Studying
+all five together is a way to map where calorimeter-only reconstruction saturates
+and where the tracker is genuinely needed. The broader aim is understanding
+tracker-versus-calorimeter complementarity.
+
+Two reconstruction regimes are studied:
+
+- **Supervised (this README).** Cells are selected using truth association, so
+  the model is tested on how well it learns kinematics from a clean shower. This
+  is the main training and evaluation path.
+- **Truth-free.** A DBSCAN clustering pipeline selects cells with no truth input.
+  This measures what is lost moving toward a realistic pipeline. It is documented
+  separately in `docs/unsup_clustering_summary.md`.
 
 ## Data
 
 The project uses the CERN ColliderML Release 1 dataset. The default sample is
-`zee_pu200` (Z to ee events with high pileup).
+`zee_pu200` (Z to ee events, PU200, OpenDataDetector).
 
-The current generated training table is `data/electrons/electrons_dbscan.parquet`
-and the target statistics file is `data/electrons/target_stats.json`. The train,
-validation, and test split is stored inside the parquet as a `split` column.
+The supervised training table is a per-electron parquet. Each row is one prompt
+electron: a variable-length set of calorimeter cells plus the truth labels
+`truth_eta`, `truth_phi`, `truth_log_pt`, `truth_z0`, and `truth_charge`. Truth
+kinematics are generator-level, taken from the primary electron at its production
+vertex.
 
-Each electron row carries the truth labels `truth_eta`, `truth_phi`,
-`truth_log_pt`, `truth_z0`, and `truth_charge`.
+The train / validation / test split is stored inside the parquet as a `split`
+column. Target normalization statistics are computed on the **train** split only
+and reused unchanged for validation and test.
 
-## Build the DBSCAN-cleaned electron dataset
+Large data and checkpoint files are not tracked in git (see `.gitignore`). The
+parquet tables live outside the repository on the compute hosts.
 
-If the table already exists you do not need to rebuild it. A typical command:
+## Model inputs
+
+Each electron keeps at most `max_cells = 128` cells, the highest-energy cells
+from the shower. Cluster-level features are computed over the **full** shower
+before this truncation, so total shower energy is preserved even when only the
+128 hottest cells are passed individually.
+
+Before features are built, the event is rotated in azimuth so the energy-weighted
+phi centroid sits at `phi = 0`. This gives every shower a canonical azimuthal
+frame.
+
+### Per-cell inputs
+
+Positional (Fourier-embedded), in the centroid-rotated frame:
+
+```text
+cell_x, cell_y, cell_z
+```
+
+High-level per-cell features include `log(cell_e_calibrated)`, `cell_eta`,
+`sin`/`cos` of the centroid-relative phi (phi is periodic), `theta`,
+`cos(theta)`, and a detector-subsystem one-hot.
+
+### Cluster-level inputs
+
+Computed from the full shower and broadcast to every cell: log total calibrated
+energy, log transverse-energy proxy, log cell count, phi and eta shower-shape
+widths and skewnesses, and a `z0` pointing anchor. The phi skewness is physically
+meaningful: the bremsstrahlung tail is asymmetric in a charge-dependent way.
+
+The full high-level input vector is **41-dimensional** (`high_level_dim = 41`).
+`x_high_level[..., 0]` is the per-cell log-energy, which is also the score used
+to select the top `max_cells` cells.
+
+## Model architecture
+
+The current champion is `AttnPoolCaloRegressor` (in
+`src/colliderml_electron/model.py`):
+
+```text
+top-cell selection (128 highest-energy cells)
+    -> Fourier positional embedding of (x, y, z)
+    -> transformer cell encoder
+    -> learned-query cross-attention pooling (permutation-invariant over cells)
+    -> MLP head -> 5 outputs
+```
+
+Attention pooling replaced an earlier Conv1d-over-sequence aggregation, which had
+an energy-rank ordering artifact. The pooling uses `n_queries = 4` trained query
+vectors that attend over the encoder output with padding masked.
+
+**Trained champion hyperparameters** (set in the training-script config, not the
+class defaults):
+
+```text
+model_type      = attnpool
+model_dim       = 128
+n_layers        = 3
+n_heads         = 4
+dim_feedforward = 256
+n_queries       = 4
+max_cells       = 128
+high_level_dim  = 41
+output_dim      = 5
+```
+
+Note: the `AttnPoolCaloRegressor.__init__` defaults (`model_dim = 256`,
+`n_layers = 6`, `n_heads = 8`) are **not** the trained configuration. The config
+dict in `scripts/train_eta_phi_pt_z0_charge.py` overrides them to 128 / 3 / 4.
+Scaling capacity up under a fixed epoch budget was tested and degraded charge via
+phi-resolution collapse (step starvation, not overfitting); the smaller model is
+the deliberate champion.
+
+## Model output
+
+The model produces five values:
+
+```text
+[delta_eta, delta_phi, delta_log_pt, delta_z0, charge_logit]
+```
+
+The first four are residuals added to their anchors; the fifth is a raw
+classification logit. Decoding at evaluation:
+
+```text
+pred_eta    = eta_centroid + delta_eta
+pred_phi    = wrap(phi_centroid + delta_phi)          # single signed correction
+pred_pt     = exp(log_sum_et + delta_log_pt)          # GeV
+pred_z0     = z0_anchor + delta_z0 * z0_std           # mm (delta is z-scored)
+pred_charge = +1 (positron) if sigmoid(charge_logit) > 0.5 else -1 (electron)
+```
+
+## Anchored residual predictions
+
+Instead of regressing absolute kinematics, the model predicts a small correction
+to a physics-motivated anchor, which is already a strong first estimate:
+
+- `eta_centroid`: energy-weighted average of cell pseudorapidities.
+- `phi_centroid`: energy-weighted azimuth, `atan2(<sin phi>, <cos phi>)`.
+- `log_sum_et`: log of the total transverse-energy proxy. For a contained
+  electromagnetic shower this is already close to `log(pT)`.
+- `z0_anchor`: an energy-weighted least-squares pointing fit of cell `z` versus a
+  geometry-correct depth axis (radius in the barrel, `z` in the endcap),
+  extrapolated toward the beamline. The `r`-`z` projection is approximately
+  unaffected by the transverse magnetic bending, which makes it a clean `z0`
+  anchor.
+
+## Phi and charge
+
+A charged particle is bent in azimuth by the solenoidal field, and the shower
+(including its bremsstrahlung tail) is displaced from the true electron direction
+in a charge-dependent way. Electrons and positrons of the same momentum are
+displaced in **opposite** azimuthal directions.
+
+The model predicts a **single signed** `delta_phi` correction. Its sign encodes
+the azimuthal bend, which is physically the charge handle. Charge is decoded from
+a **dedicated** `charge_logit`, trained with binary cross-entropy, rather than
+being inferred from a two-hypothesis phi scheme.
+
+An earlier design used two phi heads (electron and positron hypotheses) and
+selected between them using the truth charge at evaluation. That leaked truth
+information and was retired. The current single-phi-plus-charge-logit design uses
+no truth charge at inference: charge comes only from the learned logit.
+
+The charge signal is fundamentally the sign of the azimuthal bend, so phi
+resolution is the leading indicator for charge performance. The charge head is
+slow to train and needs on the order of 90,000+ optimizer steps before it lifts
+off the 0.5 chance line, which makes the total step count the governing quantity
+for any configuration choice.
+
+## Loss function
+
+The four regression targets use a Huber (smooth-L1) loss on their anchor
+residual in normalized (z-scored) space, which is robust to shower outliers.
+
+The four regression losses are combined with **homoscedastic uncertainty
+weighting**: a learned per-task `log_sigma` (four parameters) sets each task's
+weight automatically via
+
+```text
+total_reg_loss = sum_t ( exp(-2 * log_sigma_t) * loss_t + log_sigma_t )
+```
+
+This balances tasks in very different natural units (eta units, radians, log-pT,
+z-scored z0) without hand-tuning. The learned `log_sigma` converges to
+`sigma^2 ~ 2 * E[Huber loss]`, so it tracks the tail-insensitive **core** of the
+resolution rather than the RMS.
+
+Charge is a classification task and does **not** share the Gaussian-noise
+assumption the homoscedastic scheme is derived for. Putting the BCE term under a
+learned weight collapses the charge gradient to zero. Charge therefore uses a
+**fixed manual weight** and is added after the weighted regression sum:
+
+```text
+total_loss = total_reg_loss + charge_weight * BCE(charge_logit, charge_label)
+```
+
+with `charge_weight = 1.0` and `charge_label = 1` for positrons (`q = +1`).
+
+## Evaluation quantities
+
+- `eta_residual   = pred_eta - true_eta`
+- `phi_residual   = wrapped_angle_delta(pred_phi, true_phi)`  (radians, wrapped)
+- `pt_rel_residual = (pred_pT - true_pT) / true_pT`; the cleaner
+  `log_pt` residual is also reported since it is not blown up by low-pT electrons.
+- `z0_residual    = pred_z0 - true_z0`  (mm), compared against the anchor-only
+  resolution and the beamspot-prior RMS. A useful model must beat both.
+- charge: ROC AUC and accuracy versus pT, plus calibration.
+
+`z0` sits near its calorimeter ceiling: barrel `z0` RMSE is ~38.5 mm against a
+~55.7 mm beamspot prior. Endcap charge is physics-limited, because forward
+trajectories nearly parallel to the solenoid field make the azimuthal bend, and
+hence the charge sign, intrinsically hard to resolve.
+
+## Repository layout
+
+```text
+src/colliderml_electron/   # main package (io, coords, calibration, pipeline,
+                           #   cluster, dataset, model, encoder, embedding,
+                           #   resolution, splits, stats, plots, ...)
+scripts/                   # build / train / test / diagnose / plot scripts
+slurm/                     # SLURM batch scripts (Lyon CC-IN2P3)
+results/                   # evaluation plots and metrics per run
+docs/                      # DATASET_NOTES.md, unsup_clustering_summary.md
+notebooks/                 # exploratory notebooks
+pyproject.toml, uv.lock    # environment (uv, Python 3.10-3.11, torch 2.2.2)
+```
+
+Key source files:
+
+```text
+src/colliderml_electron/io.py           ColliderML loading, prompt-electron selection
+src/colliderml_electron/pipeline.py     supervised per-electron row builder
+src/colliderml_electron/cluster_pipeline.py   truth-free DBSCAN pipeline
+src/colliderml_electron/dataset.py      torch dataset, feature builder, region cuts
+src/colliderml_electron/model.py        ConcatCaloRegressor / ConvCaloRegressor /
+                                        AttnPoolCaloRegressor
+```
+
+Key scripts:
+
+```text
+scripts/build_electron_dataset.py       build the supervised per-electron parquet
+scripts/train_eta_phi_pt_z0_charge.py   train the AttnPool champion
+scripts/test_eta_phi_pt_z0_charge.py    evaluate: residuals, resolutions, charge ROC
+scripts/compare_preds_bootstrap.py      paired bootstrap for A/B comparisons
+scripts/compare_regions_bootstrap.py    barrel-vs-endcap bootstrap
+scripts/make_summary_figs.py            summary figures
+scripts/check_dims.py                   preflight: verify high_level_dim / output_dim
+```
+
+## Setup
+
+Python 3.10 or 3.11. The environment is managed with `uv` and pinned by
+`uv.lock` (`torch == 2.2.2`, `colliderml`, Python 3.11).
 
 ```bash
-python scripts/build_electron_dataset.py \
-  --channel zee \
-  --pileup pu200 \
-  --mask dbscan \
-  --n-events 50 \
-  --out data/electrons/electrons_dbscan.parquet
+uv sync
 ```
 
-For a full run, drop `--n-events`. Use `--mask dbscan` so the table matches the
-DBSCAN-cleaned test set.
-
-## Compute splits and target statistics
-
-After building the table, assign splits and compute target normalization
-statistics over the **train** split only. The statistics file must contain every
-target column the dataset normalizes, including `truth_log_pt` and `truth_z0`:
+A plain-pip fallback also works:
 
 ```bash
-python -m colliderml_electron.stats
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
 
-The same statistics file should be reused for validation and test. Do not
-recompute normalization statistics on the test set.
+## Running
 
-## Train the model
+Scripts are invoked in `env VAR=value python ...` single-line form. Command-line
+`--flags` are **not** parsed by the training and evaluation entry points;
+configuration is read from environment variables and the in-script config dict.
+Use `$HOME`, not `~`, in cluster paths.
+
+Preflight before submitting to the cluster:
 
 ```bash
-python scripts/train_eta_phi_pt_z0_charge.py
+python -c "from colliderml_electron.model import AttnPoolCaloRegressor"
+python scripts/check_dims.py --high-level-dim 41 --output-dim 5
+git log --oneline -1
 ```
 
-Key training configuration:
-
-```text
-parquet_path         = data/electrons/electrons_dbscan.parquet
-target_stats_path    = data/electrons/target_stats.json
-use_angular_features = True
-use_cluster_features = True
-high_level_dim       = 21
-max_cells            = 128
-max_abs_eta          = 3        # acceptance cut on |truth_eta|
-output_dim           = 5        # [d_eta, d_phi_e, d_phi_p, d_log_pt, d_z0]
-model_type           = conv
-```
-
-The checkpoint is saved to:
-
-```text
-checkpoints/ruche_eta_phi_pt_z0_charge.pt
-```
-
-## Evaluate the model
+Train (region and seed are environment-driven; `full`, `barrel`, `endcap`):
 
 ```bash
-python scripts/test_eta_phi_pt_z0_charge.py
+env REGION=full SEED=0 python scripts/train_eta_phi_pt_z0_charge.py
 ```
 
-The evaluation script should point at the checkpoint written by training and the
-same target statistics file used for training:
+On the Lyon CC-IN2P3 cluster (H100, SLURM):
 
-```text
-checkpoint_path = checkpoints/ruche_eta_phi_pt_z0_charge.pt
-parquet_path    = <DBSCAN-cleaned test parquet>
-stats_path      = data/electrons/target_stats.json
+```bash
+REGION=full SEED=0 sbatch slurm/run_train_test_lyon.sbatch
 ```
 
-Evaluation outputs are saved under `results/`, including expected-vs-predicted
-scatter plots and residual/resolution fits for each target, a phi-residual plot
-split by truth charge, and `test_metrics.json`.
+The per-region input-projection ablation is gated by an environment flag and is
+backward-compatible with existing checkpoints:
 
-## Important evaluation quantities
-
-### Eta residual
-
-```text
-eta_residual = predicted_eta - true_eta
+```bash
+env PER_REGION_PROJ=1 REGION=full SEED=0 python scripts/train_eta_phi_pt_z0_charge.py
 ```
 
-### Phi residual
+Evaluate a trained checkpoint. Always verify checkpoint provenance first, because
+scoring a checkpoint through the wrong branch's dataset code causes silent shape
+mismatches:
 
-```text
-phi_residual = wrapped_angle_delta(predicted_phi, true_phi)   # radians
+```bash
+python -c "import torch; print(torch.load('CKPT.pt', map_location='cpu')['config']['high_level_dim'])"
+env CKPT=CKPT.pt python scripts/test_eta_phi_pt_z0_charge.py
 ```
 
-Wrapped so predictions near `+pi` and `-pi` are handled correctly. Reported
-separately for electrons and positrons, and with the wrong-charge head selected,
-to quantify the cost of a charge flip.
+Evaluation writes expected-vs-predicted scatter plots, per-target residual and
+Gaussian-resolution fits, a phi-residual plot split by truth charge, charge ROC
+and calibration plots, and `test_metrics.json` under `results/`.
 
-### pT relative residual
+## Reporting discipline
 
-```text
-pt_rel_residual = (predicted_pT - true_pT) / true_pT
-```
+Any difference reported as a result is first run through the pre-registered
+paired bootstrap (`compare_preds_bootstrap.py`, 2000 resamples). Evaluation
+criteria and the comparison population are fixed before results are examined.
+Seed variance on the v2 supervised data is about `sd = 0.0065` in barrel charge
+AUC. Locally trained checkpoints from secondary machines are not entered into the
+summary comparisons.
 
-The fractional pT error. The cleaner `log_pt` residual
-`predicted_log_pt - true_log_pt` is also reported, since it is not blown up by
-low-pT electrons.
+## Status
 
-### z0 residual
+Implemented: ColliderML loading and prompt-electron selection; supervised
+per-electron dataset with truth eta/phi/log_pt/z0/charge; truth-free DBSCAN
+pipeline; canonical azimuthal frame; angular and shower-shape features; anchored
+residual predictions; single signed phi plus dedicated charge logit; homoscedastic
+regression loss with manually-weighted charge BCE; AttnPool regressor; residual,
+resolution, and charge-ROC evaluation; paired-bootstrap comparison tooling;
+learned-sigma instrumentation; W&B logging.
 
-```text
-z0_residual = predicted_z0 - true_z0   # mm
-```
-
-Compared against the anchor-only resolution and the beamspot-prior RMS.
-
-## Current status
-
-Implemented:
-
-- ColliderML data loading and prompt-electron selection
-- calorimeter cell extraction and idealized DBSCAN cleaning
-- `electrons_dbscan.parquet` workflow with truth eta/phi/log_pt/z0/charge
-- train / validation / test splitting and train-only normalization statistics
-- canonical azimuthal frame (centroid rotated to phi = 0)
-- angular per-cell features and shower-shape cluster features
-- anchored residual predictions for eta, phi, log_pt, z0
-- two charge-hypothesis phi heads (mirror-symmetry training)
-- calorimeter pointing anchor for z0
-- Huber per-target losses combined by a scale-invariant geometric mean
-- convolutional calorimeter regressor
-- residual and Gaussian-resolution evaluation plots
-- Weights & Biases logging
-
-Current active questions:
-
-- how much pT information is recoverable from calorimeter showers alone
-- how well z0 can be reconstructed from shower pointing
-- how separable the electron and positron phi hypotheses are
-- how performance changes with true electron pT
-- how idealized DBSCAN cleaning compares to more realistic clustering
+Open items are tracked in `docs/` (see the supervised status note and experiment
+log). The per-region input-projection ablation is not yet concluded: a
+`PER_REGION_PROJ=1` run exists, but the matched `PER_REGION_PROJ=0` twin on the
+same parquet and seed has not been run, so no comparison verdict should be drawn.
 
 ## License
 
