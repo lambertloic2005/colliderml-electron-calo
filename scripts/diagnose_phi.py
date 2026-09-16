@@ -1,5 +1,4 @@
-# scripts/diagnose_phi.py
-"""Isolate why phi won't learn. Uses your real model unchanged; only the loss
+"""Isolate why phi won't learn. Uses the real model unchanged; only the loss
 is swapped to phi-only, and --n-electrons optionally restricts the dataset.
 
 (A) phi alone, full smoke set:

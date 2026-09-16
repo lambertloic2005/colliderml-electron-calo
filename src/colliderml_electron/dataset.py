@@ -1,12 +1,6 @@
-# =============================================================================
-# JOB 1 -- RETREAT CONTROL -- branch: retreat-control  (created off pointing-upgrade)
-# Paste as: src/colliderml_electron/dataset.py   (keep this exact filename/path)
-# Content: baseline 41-feature set (K=6, phi_slope NOT exposed), NO pT floor,
-#          variance floors + clip + all safety hardening retained.
-# Pairs with: the retreat-control train script (high_level_dim = 41).
+# Feature set: 41 high-level features (K=6 radial profile, phi_slope not
+# exposed), no pT floor, variance floors and feature clipping.
 # Preflight: python scripts/check_dims.py --high-level-dim 41 --output-dim 5
-# Submit FROM THIS BRANCH: REGION=full sbatch slurm/run_train_test_new.sbatch
-# =============================================================================
 from __future__ import annotations
 import json
 from pathlib import Path
@@ -165,8 +159,8 @@ class ElectronDataset(Dataset):
         # Variance floor: below ~5mm of radial leverage the LS slope is
         # statistically undetermined and can diverge to unphysical values
         # (observed |slope| up to ~123 in production data, vs a physical
-        # ceiling of sinh(3) ~ 10 at |eta_max|=3). The old `> 1e-9` guard only
-        # avoided literal div-by-zero, not near-singular fits. Below the
+        # ceiling of sinh(3) ~ 10 at |eta_max|=3). A bare `> 1e-9` guard only
+        # avoids literal div-by-zero, not near-singular fits. Below the
         # floor, fall back to "no slope information" (z0_anchor = z_bar) --
         # exactly the case r_spread/fit_rms exist to let the network flag.
         MIN_VAR_R = 25.0  # mm^2, i.e. sqrt ~ 5 mm minimum radial spread
@@ -193,7 +187,7 @@ class ElectronDataset(Dataset):
             # energy-weighted spread, avoiding a near-zero variance (a pure dphi/dr
             # fit was noise in the endcap). Sign of dphi/d(depth) tracks the charge.
             # Reuses r_bar / var_r / wsum_z from the z0 pointing fit. The per-slice
-            # <dphi> profile was tested (Plan B) and carried no signal beyond this
+            # <dphi> profile was tested and carried no signal beyond this
             # slope (profile-LDA ~ chance), so only the scalar slope is kept. ---
             absz_cell = np.abs(z_cell)
             z_bar_a = float(np.sum(wz * absz_cell) / wsum_z)
@@ -243,7 +237,7 @@ class ElectronDataset(Dataset):
             # Defense-in-depth: even with the variance floors above, guarantee
             # every exposed high-level feature is bounded. Healthy events sit
             # well within +-30 (measured p99 across all features); this only
-            # clips the pathological tail (previously up to ~449), not the
+            # clips the pathological tail (up to ~449 without the floors), not the
             # normal dynamic range.
             cluster_feats = np.clip(cluster_feats, -50.0, 50.0)
             x_high_level = np.concatenate(

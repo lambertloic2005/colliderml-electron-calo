@@ -1,4 +1,3 @@
-
 """
 Test / evaluate the eta + phi + pT + z0 + charge model.
 
@@ -149,7 +148,6 @@ def main():
     device = get_device()
     print(f"Using device: {device}")
 
-    # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
     # Both overridable from the shell so baseline vs candidate scoring never
     # requires editing this file:
     #   CHECKPOINT=... OUTPUT_DIR=... MIN_PT_EVAL=10 python scripts/test_...
@@ -258,7 +256,6 @@ def main():
 
     # ---- decode predictions ----
     pred_eta = eta_centroid + pred_norm[:, 0]                    # anchor + predicted Δη
-    # two phi hypotheses; convention q=-1 -> electron uses head index 1
     pred_phi = wrap_phi(phi_centroid + pred_norm[:, 1])         # charge-free, no truth used
     pred_logpt = log_sum_et + pred_norm[:, 2]                   # anchor + predicted Δln pT
     pred_pt = np.exp(pred_logpt)                                # GeV
@@ -287,7 +284,7 @@ def main():
     if (tp + fn) > 0: print(f"positron acc = {tp / (tp + fn):.4f}")
 
     true_z0 = target_norm[:, 3] * z0_std + z0_mean
-    # Anchor-only baselines: what you'd get with the model head outputting zero.
+    # Anchor-only baselines: the result with the model head outputting zero.
     # The trained model must beat these, otherwise the head is learning nothing.
     print(f"anchor-only eta  std: {np.std(eta_centroid - true_eta):.5f}")
     print(f"anchor-only phi  std: {np.std(angular_residual(phi_centroid, true_phi)):.5f} rad")
@@ -305,7 +302,7 @@ def main():
     logpt_residual = pred_logpt - true_logpt
     z0_residual = pred_z0 - true_z0
 
-        # ---- z0 diagnostic excluding central model guesses ----
+    # ---- z0 diagnostic excluding central model guesses ----
     # This keeps only events where the MODEL PREDICTION is outside [-10, +10] mm.
     z0_outside_center = (pred_z0 < -10.0) | (pred_z0 > 10.0)
 
@@ -320,7 +317,7 @@ def main():
         pred_eta=pred_eta, pred_phi=pred_phi, pred_pt=pred_pt,
         truth_z0=true_z0, pred_z0=pred_z0, z0_anchor=z0_anchor,
         charge=charge, charge_logit=charge_logit,
-        # optional anchor-baseline overlay (these names already exist in your decode):
+        # anchor values, for optional anchor-baseline overlays
         eta_anchor=eta_centroid, phi_anchor=phi_centroid, pt_anchor=np.exp(log_sum_et),
     )
 
@@ -417,7 +414,7 @@ def main():
     plt.tight_layout(); plt.savefig(output_dir / "charge_roc.png", dpi=150); plt.close()
 
     # (3) accuracy vs pT, with per-event mean confidence on the SAME [0.5,1] axis.
-    # Both curves now in probability units, so any gap = genuine miscalibration,
+    # Both curves are in probability units, so any gap = genuine miscalibration,
     # not an axis artifact. confidence = P(chosen class) = max(p_pos, 1-p_pos).
     pc_all = np.maximum(p_pos, 1.0 - p_pos)
     edges = np.array([0, 2, 5, 10, 20, 50, 100, 1e9])
@@ -554,8 +551,7 @@ def main():
     print(f"pT abs RMSE:    {metrics['test/pt_abs_rmse_gev']:.4f} GeV")
 
     # ================= per-region (barrel / endcap) breakdown =================
-    # Set from scripts/diagnose_detector_regions.py; default matches the old
-    # by-|eta| print block. The diagnostic is truth-eta-labelled; predicted eta
+    # Set from scripts/diagnose_detector_regions.py. The diagnostic is truth-eta-labelled; predicted eta
     # (sigma ~ 0.019) would route just as well at inference.
     BARREL_ETA_MAX = 1.5
     ENDCAP_ETA_MAX = 3.0
@@ -597,9 +593,7 @@ def main():
         metrics[f"test/region/{label}/z0_rmse_mm"]    = float(np.sqrt(np.mean(z0_residual[m] ** 2)))
         metrics[f"test/region/{label}/z0_prior_mm"]   = float(np.std(true_z0[m]))
 
-        # charge ID per region -- only if your current script defines `charge`
-        # (truth, in {-1,+1}) and the charge logit. Rename `charge_logit` to your
-        # variable. Delete this `if` block if you don't have a charge head here.
+        # charge ID per region
         if "charge_logit" in dir() and charge is not None:
             metrics[f"test/region/{label}/charge_auc"] = float(_auc(charge_logit[m], charge[m] > 0))
             metrics[f"test/region/{label}/charge_acc"] = float(np.mean((charge_logit[m] > 0) == (charge[m] > 0)))
@@ -621,7 +615,7 @@ def main():
         plot_residuals(eta_residual, "eta", output_dir, unit="", wrap=False),
         plot_residuals(phi_residual, "phi", output_dir, unit="rad", wrap=True),
         plot_residuals(pt_rel_residual, "pt_rel", output_dir, unit="", wrap=False),
-        plot_residuals(z0_residual, "z0", output_dir, unit="mm", wrap=False),   # NEW
+        plot_residuals(z0_residual, "z0", output_dir, unit="mm", wrap=False),
     ]
     if z0_outside_center.any():
         plot_paths.extend([

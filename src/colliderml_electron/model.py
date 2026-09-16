@@ -166,11 +166,12 @@ class ConcatCaloRegressor(nn.Module):
 
         return pred
     
-    # ============================================================================
-# Add to src/colliderml_electron/model.py, AFTER the ConcatCaloRegressor class.
-# It inherits _select_top_cells from ConcatCaloRegressor and only changes how the
-# (B, L, D) encoder output is aggregated into a fixed vector: a small Conv1d stack
-# along the (energy-sorted) sequence, then a mask-aware mean+max pool, then a head.
+
+# ============================================================================
+# ConvCaloRegressor inherits _select_top_cells from ConcatCaloRegressor and only
+# changes how the (B, L, D) encoder output is aggregated into a fixed vector: a
+# small Conv1d stack along the (energy-sorted) sequence, then a mask-aware
+# mean+max pool, then a head.
 # ============================================================================
 
 

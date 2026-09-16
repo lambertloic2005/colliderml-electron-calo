@@ -1,10 +1,10 @@
 """
-Residual-prediction concept figure (slide 11) — single simple plot.
-Shower cells in the (eta, phi) plane, the energy-weighted centroid (the anchor),
-the truth point, and the small residual Delta the model predicts.
+Residual-prediction concept figure. Synthetic shower cells in the (eta, phi)
+plane, the energy-weighted centroid (the anchor), the truth point, and the
+small residual Delta the model predicts. Illustrative only: the cells are
+generated, not taken from data.
 
-To make it data-true, replace the synthetic eta/phi/E with one real electron.
-Run:  python residuals_figure.py   ->   residuals_figure.pdf / .png
+Run:  python scripts/make_residuals_figure_devcafe.py
 """
 import os
 import numpy as np
@@ -13,7 +13,7 @@ from matplotlib.patches import FancyArrowPatch
 
 rng = np.random.default_rng(7)
 
-# synthetic shower cells (replace with real per-cell arrays)
+# synthetic shower cells
 n = 40
 eta = rng.normal(0.35, 0.045, n)
 phi = rng.normal(1.20, 0.045, n)

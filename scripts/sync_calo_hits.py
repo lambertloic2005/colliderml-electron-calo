@@ -6,8 +6,8 @@ already present locally.
 ColliderML Release 1 is hosted on the Hugging Face Hub. hf_hub_download already
 resumes partial files and skips anything whose hash/etag matches the local cache.
 On top of that, this script does an explicit "do I already have this filename?"
-check against YOUR data directory (scanned recursively), so files you fetched by
-any earlier method are never re-downloaded.
+check against the local data directory (scanned recursively), so files fetched
+by any earlier method are never re-downloaded.
 
 Usage:
     pip install huggingface_hub
@@ -21,12 +21,12 @@ import argparse
 from pathlib import Path
 from huggingface_hub import HfApi, hf_hub_download
 
-# ---- configure for your setup --------------------------------------------
+# ---- configuration --------------------------------------------------------
 REPO_ID = "CERN/ColliderML-Release-1"   # dataset repo on the HF Hub
 # Substrings every wanted file must contain. Confirm the exact CHANNEL token
 # from the --dry-run listing (it may be "zee", "Zee", "z_ee", ...).
 MATCH = ["zee", "pu200", "particles"]
-# Root under which your existing calo_hits parquet already live AND where new
+# Root under which existing calo_hits parquet already live AND where new
 # shards will be written. Scanned recursively, so sub-folders are fine.
 LOCAL_DIR = Path("data/colliderml")
 # --------------------------------------------------------------------------

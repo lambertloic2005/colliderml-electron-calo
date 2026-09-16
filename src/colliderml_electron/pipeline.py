@@ -137,9 +137,9 @@ def build_electron_table(
     pileup: str = "pu200",
     max_events: int | None = None,
     dR_max: float = 0.1,
-    mask_kind: str = "dbscan",        # add
-    eps: float = 0.08,              # add
-    min_samples: int = 2,           # add
+    mask_kind: str = "dbscan",
+    eps: float = 0.08,
+    min_samples: int = 2,
     task_id: int = 0,               # SLURM array slicing: this task's index
     n_tasks: int = 1,               # SLURM array slicing: total number of tasks
     shard_min: int | None = None,   # inclusive shard-index bounds; None = no bound.
@@ -215,9 +215,9 @@ def build_electron_table(
                     calo_row=c_row,
                     electron=e,
                     dR_max=dR_max,
-                    mask_kind=mask_kind,        # add
-                    eps=eps,                    # add
-                    min_samples=min_samples,    # add
+                    mask_kind=mask_kind,
+                    eps=eps,
+                    min_samples=min_samples,
                 )
                 if row is None:
                     skipped += 1

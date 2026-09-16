@@ -235,7 +235,7 @@ def dbscan_keep_mask(
     )
     eta_e, phi_e = float(eta_e), float(phi_e)
 
-    # Pairwise dR with phi wrapping (uses your existing helper)
+    # Pairwise dR with phi wrapping
     deta = eta_c[:, None] - eta_c[None, :]
     _, dphi = delta_eta_phi(
         eta_c[:, None], phi_c[:, None], eta_c[None, :], phi_c[None, :]

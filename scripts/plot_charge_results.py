@@ -1,11 +1,11 @@
-"""Charge plots for slide 17 (no error bars version).
+"""Charge plots: ROC curve and charge ID vs pT.
 
 Produces two figures from per-electron charge predictions:
   (1) ROC curve (positron = positive) with AUC
   (2) Charge ID vs pT: per-bin accuracy and mean confidence, with a chance line
       and per-bin counts. No error bars.
 
-Notes on the two review comments this still addresses:
+Design notes:
   - y-axis is NOT labelled "probability" (a classifier score is not a calibrated
     probability). Accuracy is a genuine fraction; the second curve is explicitly
     "mean confidence" = mean of max(p, 1-p), the model's probability for its

@@ -1,4 +1,3 @@
-# src/colliderml_electron/regressor.py
 from __future__ import annotations
 import torch
 from torch import nn
@@ -6,15 +5,14 @@ from .encoder import CellEncoder
 
 
 class Regressor(nn.Module):
-    def __init__(self, model_dim: int = 128, hidden: int = 128, n_outputs: int = 3):  # was 2
+    def __init__(self, model_dim: int = 128, hidden: int = 128, n_outputs: int = 3):
         super().__init__()
-        self.pool_norm = nn.LayerNorm(model_dim)        # keep if you used the LayerNorm fix
+        self.pool_norm = nn.LayerNorm(model_dim)
         self.head = nn.Sequential(
             nn.Linear(model_dim, hidden),
             nn.GELU(),
-            nn.Linear(hidden, n_outputs),               # now 3: [eta, phi_cos, phi_sin]
+            nn.Linear(hidden, n_outputs),               # [eta, phi_cos, phi_sin]
         )
-    # combine() and forward() unchanged
     def combine(self, h, mask):
         h = h.masked_fill(mask.unsqueeze(-1), 0.0)
         return h.sum(dim=1)

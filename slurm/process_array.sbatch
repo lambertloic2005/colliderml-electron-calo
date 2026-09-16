@@ -27,9 +27,9 @@
 
 set -eo pipefail
 
-# ---- paths (edit if yours differ) -----------------------------------------
+# ---- paths ----------------------------------------------------------------
 REPO="$HOME/colliderml-electron-calo"
-RAW="$WORKDIR/raw"                 # where you rsync'd the raw shards
+RAW="$WORKDIR/raw"                 # raw shards (rsynced here)
 PARTS="$WORKDIR/processed/parts"   # per-task outputs
 ENV_NAME="colliderml"              # conda env built on the login node
 mkdir -p "$PARTS"

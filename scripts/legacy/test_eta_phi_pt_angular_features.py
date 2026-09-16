@@ -139,7 +139,6 @@ def main():
     device = get_device()
     print(f"Using device: {device}")
 
-    # If you trained the "concat" variant, point these at eta_phi_pt_concat.* instead.
     checkpoint_path = Path("checkpoints/ruche/ruche_Jun15_3etaLim.pt")
     parquet_path = Path("data/electrons/testRuche/zee_pu200_supervised_dbscan_TEST.parquet")
     stats_path = Path("data/electrons/testRuche/target_stats.json")
@@ -200,7 +199,7 @@ def main():
     true_phi = wrap_phi(target_norm[:, 1] * phi_std + phi_mean)
     true_logpt = target_norm[:, 2] * logpt_std + logpt_mean
     true_pt = np.exp(true_logpt)
-    # Anchor-only baselines: what you'd get with the model head outputting zero.
+    # Anchor-only baselines: the result with the model head outputting zero.
     # The trained model must beat these, otherwise the head is learning nothing.
     print(f"anchor-only eta  std: {np.std(eta_centroid - true_eta):.5f}")
     print(f"anchor-only phi  std: {np.std(angular_residual(phi_centroid, true_phi)):.5f} rad")

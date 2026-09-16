@@ -1,4 +1,3 @@
-# scripts/check_predictions.py
 """Dump model predictions and targets for one batch — diagnostic only.
 
 Run from the repo root:

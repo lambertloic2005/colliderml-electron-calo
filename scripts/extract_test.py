@@ -1,4 +1,3 @@
-# extract_test.py
 import polars as pl
 
 df = pl.read_parquet("data/electrons/zee_pu200_supervised_dbscan.parquet")

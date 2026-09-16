@@ -1,10 +1,3 @@
-# =============================================================================
-# JOB 1 -- RETREAT CONTROL -- branch: retreat-control  (created off pointing-upgrade)
-# Paste as: scripts/train_eta_phi_pt_z0_charge.py   (keep this exact filename/path)
-# Content: high_level_dim = 41, NO min_pt (trains on all pT), min_epochs = 100,
-#          durable best-checkpoint save.
-# Pairs with: the retreat-control dataset.py (K=6, no phi_slope).
-# =============================================================================
 import json
 import os
 
@@ -18,7 +11,6 @@ import wandb
 from colliderml_electron.dataset import make_loader, TARGET_COLS
 from colliderml_electron.model import ConcatCaloRegressor, ConvCaloRegressor
 
-#HELLO WORLD
 ETA_INDEX = TARGET_COLS.index("truth_eta")
 PHI_INDEX = TARGET_COLS.index("truth_phi")
 LOGPT_INDEX = TARGET_COLS.index("truth_log_pt")
@@ -138,9 +130,9 @@ class KinematicLoss(nn.Module):
 
     def forward(self, pred, target, phi_centroid, eta_centroid, log_sum_et,
                 z0_anchor, truth_charge):
-        # pred: [delta_eta, delta_phi, delta_logpt, delta_z0, charge_logit]
+        # pred: [delta_eta, delta_phi, delta_logpt, z0_norm, charge_logit]
         # target: [eta_norm, phi_norm, logpt_norm, z0_norm] (z-scored, this order)
-        # truth_charge: (B,) in {-1, +1}; used ONLY as the classification label now.
+        # truth_charge: (B,) in {-1, +1}; used ONLY as the classification label.
         pred_deta    = pred[:, 0]
         pred_dphi    = pred[:, 1]      # single signed bend; its sign IS the charge handle
         pred_dlogpt  = pred[:, 2]
@@ -173,7 +165,7 @@ class KinematicLoss(nn.Module):
         # Charge added with a fixed weight so its gradient cannot be suppressed.
         total_loss = total_loss + self.charge_weight * charge_loss
 
-        # diagnostics: phi is now decoded WITHOUT any truth charge
+        # diagnostics: phi is decoded without any truth charge
         pred_phi = phi_centroid + pred_dphi
         delta_phi = wrapped_angle_delta(pred_phi, target_phi)
         d_lnpt = pred_dlogpt - dlogpt_target

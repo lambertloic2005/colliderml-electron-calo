@@ -1,9 +1,7 @@
-# scripts/train_eta_phi_smoke.py
 import argparse
 import torch
 import wandb
 
-# Adjust import names if your module filenames differ.
 from colliderml_electron.embedding import FourierPositionalEncoding
 from colliderml_electron.encoder import CellEncoder
 from colliderml_electron.regressor import Regressor, EtaPhiModel, eta_phi_geometric_loss

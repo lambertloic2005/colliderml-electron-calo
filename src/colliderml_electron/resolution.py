@@ -12,7 +12,7 @@ core, so it matches a ROOT / curve_fit Gaussian over the same truncated range
 while avoiding binning bias. Report sigma as the resolution and the tail
 fraction separately, the way the thesis does ("outliers remain small").
 
-For phi (or any angle) you MUST wrap the residual first: a single prediction
+For phi (or any angle) the residual MUST be wrapped first: a single prediction
 that lands across the +/-pi seam otherwise contributes ~2*pi and wrecks both the
 bias and the first truncation iteration.
 """

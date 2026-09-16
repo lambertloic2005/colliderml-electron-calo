@@ -177,7 +177,7 @@ def main():
     pred_eta = pred_norm[:, 0] * eta_std + eta_mean
     pred_phi = np.arctan2(pred_norm[:, 2], pred_norm[:, 1])   # decode cos/sin -> radians
 
-    true = denormalize_eta_phi(target_norm, stats)            # targets unchanged: 2 cols
+    true = denormalize_eta_phi(target_norm, stats)            # targets: 2 cols
     true_eta = true[:, 0]
     true_phi = wrap_phi(true[:, 1])
 

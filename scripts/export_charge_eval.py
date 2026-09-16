@@ -8,22 +8,18 @@ over the test split, and saves:
     truth_pt     : (N,) GeV          (decoded from the truth_log_pt target)
     charge_score : (N,) P(positron)  (sigmoid of the charge logit)
 
-IMPORTANT — the one model-specific line:
-  This branch's committed model has NO charge head (output is
-  [eta, phi_cos, phi_sin, log_pt]).  Your latest checkpoint adds a charge logit.
-  You must tell this script where that logit is:
+Charge logit location:
     --charge-index K   column K of the model output is the charge logit
                        (default -1 = last column)
-  If your model.forward returns a tuple/dict instead of a single tensor, edit
-  the marked block below.
+  Tuple/dict model outputs are handled in the marked extraction block below.
 
 Sanity check: the script prints the model-output shape on the first batch and a
-final AUC.  If AUC ~ your known 0.816, the index and sign are right.  If AUC ~
-0.184, the sign is flipped -> add --flip.  If AUC ~ 0.5, wrong column.
+final AUC. An AUC well below 0.5 means the sign is flipped (add --flip); an AUC
+near 0.5 usually means the wrong column.
 
 Run:
     python scripts/export_charge_eval.py \
-        --checkpoint checkpoints/ruche/<your_latest>.pt \
+        --checkpoint checkpoints/ruche/<checkpoint>.pt \
         --parquet   data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet \
         --stats     data/electrons/eta_phi_pt_z0_charge/target_stats.json \
         --out charge_eval.npz --charge-index -1

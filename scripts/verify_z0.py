@@ -63,7 +63,7 @@ def main():
 
     # --- synthetic batch ---
     B = args.batch
-    pred = torch.randn(B, 5, requires_grad=True)         # [deta, dphi_e, dphi_p, dlogpt, dz0]
+    pred = torch.randn(B, 5, requires_grad=True)         # [deta, dphi, dlogpt, z0_norm, charge_logit]
     target = torch.randn(B, 4)                           # [eta, phi, logpt, z0]  (normalized)
     phi_c = torch.zeros(B)
     eta_c = torch.zeros(B)

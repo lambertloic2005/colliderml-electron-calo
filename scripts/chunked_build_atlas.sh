@@ -3,11 +3,11 @@
 # chunked_build_atlas.sh -- disk-bounded full-dataset build on atlas.
 #
 # Loops over shard-index chunks [LO, HI]; per chunk:
-#   1. download  : only that range (skips files already on disk -- your
-#                  pre-existing shards 0-184 cost zero download)
+#   1. download  : only that range (skips files already on disk, so
+#                  pre-existing shards 0-184 cost no download)
 #   2. process   : N_TASKS parallel workers, BOUNDED to the range via
-#                  --shard-min/--shard-max (requires the fetch_and_cluster.py
-#                  and pipeline.py range patches), each writing a uniquely
+#                  --shard-min/--shard-max in fetch_and_cluster.py and
+#                  pipeline.py, each writing a uniquely
 #                  named part parquet -- parts from all chunks accumulate
 #   3. delete    : the chunk's raw shard pairs (only after every worker exits
 #                  0 AND the expected part files exist)
@@ -15,9 +15,9 @@
 #
 # Peak raw footprint ~= CHUNK_PAIRS x mean pair size (~2.7 GB/pair at pu200,
 # scaled from 185 pairs =~ 500 GB) + the growing (much smaller) parts dir.
-# CHUNK_PAIRS=50 => ~135 GB of raw on disk at any time. Adjust to your quota.
+# CHUNK_PAIRS=50 => ~135 GB of raw on disk at any time. Adjust to the disk quota.
 #
-# RAM sizing unchanged: N_TASKS <= min(free cores, free_RAM_GB / 8).
+# RAM sizing: N_TASKS <= min(free cores, free_RAM_GB / 8).
 # Keep N_TASKS <= CHUNK_PAIRS so every worker has at least one shard.
 #
 # Usage (repo root, colliderml env active, inside tmux):
@@ -28,7 +28,7 @@
 # (part files are overwritten, raw was not yet deleted).
 #
 # WARNING: DELETE_RAW=1 (default) removes raw shards after processing --
-# including your original 0-184 v1 raw copies. They remain re-downloadable
+# including the original 0-184 v1 raw copies. They remain re-downloadable
 # from HuggingFace. Set DELETE_RAW=0 to keep raw (needs full-dataset disk).
 # NEVER point PARTS at the v1 processed directory.
 # ===========================================================================
@@ -54,10 +54,10 @@ cd "$REPO"
     || { echo "ERROR: N_TASKS ($N_TASKS) must be <= CHUNK_PAIRS ($CHUNK_PAIRS)." >&2; exit 1; }
 python -c "from colliderml_electron.pipeline import build_electron_table" \
     || { echo "ERROR: colliderml_electron not importable -- 'pip install -e .' first." >&2; exit 1; }
-# Refuse to run against unpatched code: without range bounds the process stage
+# Refuse to run if --shard-min/--shard-max are unavailable: without range bounds the process stage
 # would sweep up every shard on disk and later chunks would duplicate them.
 python scripts/fetch_and_cluster.py --help 2>/dev/null | grep -q -- --shard-min \
-    || { echo "ERROR: fetch_and_cluster.py lacks --shard-min/--shard-max -- apply the range patches first." >&2; exit 1; }
+    || { echo "ERROR: fetch_and_cluster.py lacks --shard-min/--shard-max." >&2; exit 1; }
 
 count_pairs_in_range () {  # $1=lo $2=hi -> echoes number of matched pairs on disk
     python - "$RAW" "$1" "$2" <<'EOF'

@@ -1,7 +1,7 @@
 import polars as pl, json
 from colliderml_electron.dataset import TARGET_COLS
 
-P = "data/electrons/electrons_dbscan.parquet"        # match your real filename
+P = "data/electrons/electrons_dbscan.parquet"
 S = "data/electrons/target_stats.json"
 df = pl.read_parquet(P)
 

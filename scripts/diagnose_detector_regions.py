@@ -37,7 +37,7 @@ for code in sorted(np.unique(det)):
           f"{np.median(zz):>8.0f} {iqr(zz):>8.0f}  {shape:>6}  "
           f"[{ee.min():.2f}, {ee.max():.2f}]")
 
-# If you can identify the ECAL barrel code (innermost barrel-shaped subsystem)
-# and the ECAL endcap code, the transition is where their |eta| coverage meets:
+# The barrel/endcap transition is where the |eta| coverage of the ECAL barrel
+# code (innermost barrel-shaped subsystem) meets that of the ECAL endcap code.
 print("\nSet BARREL_ETA_MAX to the |eta| where the ECAL barrel coverage ends "
       "and the ECAL endcap begins (read it off the two rows above).")

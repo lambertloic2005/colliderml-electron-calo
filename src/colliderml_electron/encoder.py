@@ -56,7 +56,7 @@ class CellEncoder(nn.Module):
             is_endcap = (cell_eta.abs() > self.region_eta_boundary).unsqueeze(-1)
             h = torch.where(is_endcap, self.in_proj_endcap(emb), self.in_proj(emb))
         else:
-            h = self.in_proj(emb)                            # (B, L, D)                              # (B, L, D)
+            h = self.in_proj(emb)                            # (B, L, D)
 
         # 3. N mask-aware encoder layers.
         #    src_key_padding_mask convention is True = ignore, matching `mask`.

@@ -15,7 +15,7 @@ def assign_splits(
 
     events = df["event_id"].unique().sort().to_numpy()
     rng = np.random.default_rng(seed)
-    events = rng.permutation(events)   # was: rng.shuffle(events)
+    events = rng.permutation(events)
 
     n = len(events)
     n_train = int(train_frac * n)

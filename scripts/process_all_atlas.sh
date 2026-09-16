@@ -15,7 +15,7 @@
 # Usage (from the repo root, inside the colliderml env, ideally under tmux):
 #     N_TASKS=16 bash scripts/process_all_atlas.sh
 # All knobs are env-overridable; defaults below match the atlas layout used
-# for v1 (see scripts/verify_merged_parquet.py) with a NEW processed_v2 dir
+# for v1 (see scripts/verify_merged_parquet.py) with a separate processed_v2 dir
 # so the v1 dataset -- still needed for split harmonization and as the
 # champion baseline's dataset -- is never touched.
 # ===========================================================================

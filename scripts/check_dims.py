@@ -9,7 +9,7 @@ p = argparse.ArgumentParser()
 p.add_argument("--parquet", default="data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet")
 p.add_argument("--stats",   default="data/electrons/eta_phi_pt_z0_charge/target_stats.json")
 p.add_argument("--split",   default="train")
-p.add_argument("--high-level-dim", type=int, default=21,  # <-- the value you set in the train config
+p.add_argument("--high-level-dim", type=int, default=21,
                help="must equal the cfg['high_level_dim'] you are about to train with")
 p.add_argument("--output-dim", type=int, default=5)
 args = p.parse_args()
