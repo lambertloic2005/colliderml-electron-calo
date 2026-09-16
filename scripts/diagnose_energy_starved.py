@@ -1,4 +1,4 @@
-"""Supervisor-ready version of the energy-starved cluster diagnostics.
+"""Energy-starved cluster diagnostics.
 
 Same analysis as diagnose_energy_starved.py, but with interpretable axes:
 raw event counts on a log scale (every bar = real number of electrons),
