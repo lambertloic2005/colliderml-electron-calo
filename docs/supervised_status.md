@@ -76,13 +76,3 @@ In the barrel the network gets well below the prior. Whether this is a
 calorimeter-only ceiling is open; the poor anchor-only RMSE (300-540 mm) shows
 the anchor is noisy, not that the network has saturated.
 
-## Still open
-
-- Full-population test metrics for 770ba8a / job 55426542, recorded in results/.
-- List the seeds behind the 0.0065 figure.
-- Region-projection ablation: the PER_REGION_PROJ=0 twin on the same parquet
-  and seed has not been run, so no verdict.
-- Zero-shot measurement (supervised checkpoint on truth-free data with
-  supervised stats): never executed.
-- Why the supervised pipeline drops some electrons: suspected zero
-  truth-linked cells, unconfirmed.
