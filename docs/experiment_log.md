@@ -1,14 +1,4 @@
 # Experiment log
-
-One line per branch, in rough chronological order, recording what each line of
-work tested and how it resolved. This is a provenance record, not a results
-table; headline numbers live in the per-run `results/` directories and in the
-status notes.
-
-Verdict labels: ADOPTED (folded into the main line), RETIRED (superseded or
-reverted), NEGATIVE (tested and rejected on evidence), MERGED (folded into a
-later branch), OPEN (not concluded).
-
 ## Data and infrastructure
 
 - building-data-pipeline (May 22) -- splits, target normalization, dataset
@@ -67,11 +57,6 @@ later branch), OPEN (not concluded).
 - attnpool-unsup-324ep (Jul 31) -- truth-free run at step-matched 324 epochs,
   cross-dataset bootstrap, region split, summary figures. ADOPTED; writeup in
   docs/unsup_clustering_summary.md.
-- end-of-internship (Jul 31) -- checkpoint/analysis snapshot. Archival.
 - sigma-instrumentation (Aug 28) -- W&B logging of learned log_sigma, best-epoch
   loss_state_dict in checkpoints, uncertainty-vs-resolution check. ADOPTED,
   merged to main.
-- region-proj-attnpool (Aug 25) -- per-cell barrel/endcap input projection gated
-  by PER_REGION_PROJ. Code ADOPTED (env-gated, backward compatible); the
-  ablation is OPEN -- a PER_REGION_PROJ=0 twin on the same parquet and seed has
-  not been run, so no verdict.
