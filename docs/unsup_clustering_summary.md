@@ -17,13 +17,6 @@ In the endcap (1.5 < |eta| < 3.0) the pipeline fails, recovering only 36.2
 percent of electrons, and the survivors are also measured worse (charge AUC
 -0.116, pT resolution 2.9 -> 7.7 percent).
 
-The endcap failure has been diagnosed. It is not the cell energy threshold, not
-shower fragmentation, and not lost bremsstrahlung; three separate measurements
-exclude each. It is DBSCAN percolating into pileup: the electron's cluster is
-bridged to a neighbouring pileup blob, the merged centroid moves outside the
-matching cone, and the electron is lost. The remedy is a splitting step of the
-kind used in ATLAS topological clustering, not a threshold adjustment.
-
 ## What was built
 
 Truth-free pipeline (`cluster_pipeline.build_cluster_table`, branch
@@ -33,8 +26,7 @@ cluster is matched to the nearest prompt truth electron within `dR_max`, and
 truth is used only to assign the label after clustering, never to select cells.
 
 The supervised reference (`pipeline.build_electron_row`) instead selects cells
-by truth contribution and applies no energy threshold at all. That asymmetry
-matters and is quantified below.
+by truth contribution and applies no energy threshold at all.
 
 | | supervised (truth-seeded) | truth-free |
 |---|---|---|
@@ -139,10 +131,7 @@ prior of about 57 mm. Neither model measures z0 in the endcap at all, so there
 was no information available to lose. This serves as an internal consistency
 check on the comparison.
 
-pT is the dominant loss everywhere and eta the most robust, which follows from
-the containment measurement: log_sum_et is the pT anchor and is an energy sum,
-whereas the angular centroids are set by the high-energy core that survives
-thresholding.
+pT is the dominant loss everywhere and eta the most robust.
 
 ## Working point scan
 
@@ -176,9 +165,9 @@ percolated blobs and recovers genuine electrons.
 ## Caveats
 
 - 14.9 percent of truth-free test electrons are absent from the supervised test
-  set. These are electrons the supervised pipeline rejected because no
-  truth-linked cells survived. Some are genuine recoveries, some are clusters
-  matched to electrons that deposited essentially nothing. They are excluded
+  set. These are electrons the supervised pipeline rejected. Some are genuine
+  recoveries, some are clusters matched to electrons that deposited
+  essentially nothing. They are excluded
   from the paired comparison but they inflate the raw metrics in the truth-free
   test log, which is why only the paired numbers should be quoted.
 - The endcap efficiency curve in the scan is an upper bound for the same reason.

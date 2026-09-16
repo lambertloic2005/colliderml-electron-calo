@@ -370,10 +370,7 @@ regression loss with manually-weighted charge BCE; AttnPool regressor; residual,
 resolution, and charge-ROC evaluation; paired-bootstrap comparison tooling;
 learned-sigma instrumentation; W&B logging.
 
-Open items are tracked in `docs/` (see the supervised status note and experiment
-log). The per-region input-projection ablation is not yet concluded: a
-`PER_REGION_PROJ=1` run exists, but the matched `PER_REGION_PROJ=0` twin on the
-same parquet and seed has not been run, so no comparison verdict should be drawn.
+Open items are tracked in `docs/supervised_status.md`.
 
 ## License
 
