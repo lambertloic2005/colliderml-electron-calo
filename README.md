@@ -14,9 +14,10 @@ five per-electron quantities from calorimeter cells only:
 - longitudinal impact parameter, `z0`
 - electric charge sign, `q`
 
-`eta`, `phi`, `pT`, and `z0` are predicted as residuals from physics-motivated
-anchors (see "Anchored residual predictions"). Charge is a binary classification
-output.
+`eta`, `phi`, and `pT` are predicted as residuals from physics-motivated
+anchors (see "Anchored residual predictions"). `z0` is regressed directly in
+z-scored units, with the pointing-fit anchor supplied as an input feature.
+Charge is a binary classification output.
 
 ## Project goal
 
@@ -83,6 +84,10 @@ energy, log transverse-energy proxy, log cell count, phi and eta shower-shape
 widths and skewnesses, and a `z0` pointing anchor. The phi skewness is physically
 meaningful: the bremsstrahlung tail is asymmetric in a charge-dependent way.
 
+The pointing fit also contributes its slope, radial spread and fit RMS, and a
+K = 6 radial profile (<z> - anchor, <r>, energy fraction per slice; 18 values).
+`phi_slope` is computed but not exposed in the 41-dim set.
+
 The full high-level input vector is **41-dimensional** (`high_level_dim = 41`).
 `x_high_level[..., 0]` is the per-cell log-energy, which is also the score used
 to select the top `max_cells` cells.
@@ -131,17 +136,17 @@ the deliberate champion.
 The model produces five values:
 
 ```text
-[delta_eta, delta_phi, delta_log_pt, delta_z0, charge_logit]
+[delta_eta, delta_phi, delta_log_pt, z0_norm, charge_logit]
 ```
 
-The first four are residuals added to their anchors; the fifth is a raw
-classification logit. Decoding at evaluation:
+The first three are residuals added to their anchors; the fourth is z0 in
+z-scored units; the fifth is a raw classification logit. Decoding at evaluation:
 
 ```text
 pred_eta    = eta_centroid + delta_eta
 pred_phi    = wrap(phi_centroid + delta_phi)          # single signed correction
 pred_pt     = exp(log_sum_et + delta_log_pt)          # GeV
-pred_z0     = z0_anchor + delta_z0 * z0_std           # mm (delta is z-scored)
+pred_z0     = z0_mean + z0_norm * z0_std              # mm; no anchor added
 pred_charge = +1 (positron) if sigmoid(charge_logit) > 0.5 else -1 (electron)
 ```
 
@@ -154,11 +159,15 @@ to a physics-motivated anchor, which is already a strong first estimate:
 - `phi_centroid`: energy-weighted azimuth, `atan2(<sin phi>, <cos phi>)`.
 - `log_sum_et`: log of the total transverse-energy proxy. For a contained
   electromagnetic shower this is already close to `log(pT)`.
-- `z0_anchor`: an energy-weighted least-squares pointing fit of cell `z` versus a
-  geometry-correct depth axis (radius in the barrel, `z` in the endcap),
-  extrapolated toward the beamline. The `r`-`z` projection is approximately
-  unaffected by the transverse magnetic bending, which makes it a clean `z0`
-  anchor.
+- `z0_anchor`: energy-weighted least-squares fit of cell `z` against cell
+  radius `r`, extrapolated to `r = 0`. It is an input feature, not a residual
+  base. On its own it is a poor estimator (anchor-only RMSE 300-540 mm on the
+  tracked pT > 10 GeV runs, vs a ~54 mm beamspot prior). Magnetic bending is not
+  the limitation: for a helix, z is linear in transverse arc length, which equals
+  r to better than 0.1 percent for pT > 10 GeV at calorimeter radii (R = pT/0.3B
+  is of order 10 m for the ODD 2 T field). The errors are shower-related. In the
+  endcap the radial lever arm along the shower axis is comparable to the lateral
+  shower spread, which plausibly explains why z0 is not measured there.
 
 ## Phi and charge
 
@@ -185,8 +194,10 @@ for any configuration choice.
 
 ## Loss function
 
-The four regression targets use a Huber (smooth-L1) loss on their anchor
-residual in normalized (z-scored) space, which is robust to shower outliers.
+The four regression targets use a Huber loss, which is robust to shower
+outliers. eta, phi (wrapped) and log(pT) are compared as anchor residuals in
+physical units (Huber delta 0.1, 0.05 rad, 0.2); z0 is compared in z-scored
+units (delta 1.0). The learned sigmas are in these same units.
 
 The four regression losses are combined with **homoscedastic uncertainty
 weighting**: a learned per-task `log_sigma` (four parameters) sets each task's
@@ -222,8 +233,12 @@ with `charge_weight = 1.0` and `charge_label = 1` for positrons (`q = +1`).
   resolution and the beamspot-prior RMS. A useful model must beat both.
 - charge: ROC AUC and accuracy versus pT, plus calibration.
 
-`z0` sits near its calorimeter ceiling: barrel z0 RMSE is ~39 mm (barrel) to ~42-47 mm (full acceptance)
-against a ~54 mm beamspot prior. Endcap charge is physics-limited, because forward
+In the barrel the network beats the beamspot prior on z0: about 39 mm RMSE on
+the tracked July runs (|eta| < 1.5, pT > 10 GeV, prior 54 mm) and 34.8 mm core
+sigma for the AttnPool reference on the paired set in
+docs/unsup_clustering_summary.md. In the endcap z0 is not measured (it sits at
+the ~57-58 mm prior). Whether the barrel value is a calorimeter-only ceiling is
+not established. Endcap charge is physics-limited, because forward
 trajectories nearly parallel to the solenoid field make the azimuthal bend, and
 hence the charge sign, intrinsically hard to resolve.
 
@@ -236,7 +251,7 @@ src/colliderml_electron/   # main package (io, coords, calibration, pipeline,
 scripts/                   # build / train / test / diagnose / plot scripts
 slurm/                     # SLURM batch scripts (Lyon CC-IN2P3)
 results/                   # evaluation plots and metrics per run
-docs/                      # DATASET_NOTES.md, unsup_clustering_summary.md
+docs/                      # supervised_status.md, experiment_log.md, unsup_clustering_summary.md
 notebooks/                 # exploratory notebooks
 pyproject.toml, uv.lock    # environment (uv, Python 3.10-3.11, torch 2.2.2)
 ```
@@ -296,23 +311,27 @@ python scripts/check_dims.py --high-level-dim 41 --output-dim 5
 git log --oneline -1
 ```
 
-Train (region and seed are environment-driven; `full`, `barrel`, `endcap`):
+Train (region, seed and epoch count are environment-driven; regions are
+`full`, `barrel`, `endcap`; `N_EPOCHS=200` is the supervised reference, 324 the
+truth-free step-matched run). Locally the script reads
+`data/electrons/electrons.parquet`; the Lyon sbatch symlinks the staged parquet
+to that name.
 
 ```bash
-env REGION=full SEED=0 python scripts/train_eta_phi_pt_z0_charge.py
+env N_EPOCHS=200 REGION=full SEED=0 python scripts/train_eta_phi_pt_z0_charge.py
 ```
 
 On the Lyon CC-IN2P3 cluster (H100, SLURM):
 
 ```bash
-REGION=full SEED=0 sbatch slurm/run_train_test_lyon.sbatch
+N_EPOCHS=200 REGION=full SEED=0 sbatch slurm/run_train_test_lyon.sbatch
 ```
 
 The per-region input-projection ablation is gated by an environment flag and is
 backward-compatible with existing checkpoints:
 
 ```bash
-env PER_REGION_PROJ=1 REGION=full SEED=0 python scripts/train_eta_phi_pt_z0_charge.py
+env PER_REGION_PROJ=1 N_EPOCHS=200 REGION=full SEED=0 python scripts/train_eta_phi_pt_z0_charge.py
 ```
 
 Evaluate a trained checkpoint. Always verify checkpoint provenance first, because
@@ -321,8 +340,10 @@ mismatches:
 
 ```bash
 python -c "import torch; print(torch.load('CKPT.pt', map_location='cpu')['config']['high_level_dim'])"
-env CKPT=CKPT.pt python scripts/test_eta_phi_pt_z0_charge.py
+env CHECKPOINT=CKPT.pt STATS_PATH=/path/to/target_stats.json OUTPUT_DIR=results/<run_name> python scripts/test_eta_phi_pt_z0_charge.py
 ```
+
+Optional eval cuts: `MIN_PT_EVAL`, `MAX_ABS_ETA_EVAL`, `MIN_ABS_ETA_EVAL`.
 
 Evaluation writes expected-vs-predicted scatter plots, per-target residual and
 Gaussian-resolution fits, a phi-residual plot split by truth charge, charge ROC
@@ -333,9 +354,10 @@ and calibration plots, and `test_metrics.json` under `results/`.
 Any difference reported as a result is first run through the pre-registered
 paired bootstrap (`compare_preds_bootstrap.py`, 2000 resamples). Evaluation
 criteria and the comparison population are fixed before results are examined.
-Seed variance across the tracked barrel benchmark seeds is about `sd = 0.017`
-in charge AUC; an earlier `sd = 0.0065` working value is unreconciled and should
-be checked against W&B before being quoted. Locally trained checkpoints from secondary machines are not entered into the
+The between-seed sd of barrel charge AUC on the current dataset generation is
+0.0065 (docs/unsup_clustering_summary.md). The 0.017 spread of the tracked July
+benchmark runs is not a seed variance: those runs predate AttnPool, appear to
+mix configurations, and were selected on the charge head having trained. Locally trained checkpoints from secondary machines are not entered into the
 summary comparisons.
 
 ## Status

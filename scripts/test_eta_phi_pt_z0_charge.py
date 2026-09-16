@@ -15,9 +15,10 @@ Decoding:
 Resolutions are 3-sigma-truncated Gaussian fits; pT is reported as a
 fractional resolution (pred - true)/true.
 
-Env overrides (all optional; defaults below):
-    CHECKPOINT, OUTPUT_DIR, PARQUET, STATS_PATH   -- paths
-    MIN_PT_EVAL, MAX_ABS_ETA_EVAL, MIN_ABS_ETA_EVAL -- eval-time acceptance
+Environment variables:
+    CHECKPOINT, STATS_PATH, OUTPUT_DIR              -- required
+    PARQUET                                         -- optional path
+    MIN_PT_EVAL, MAX_ABS_ETA_EVAL, MIN_ABS_ETA_EVAL -- optional eval-time acceptance
 STATS_PATH must always match the stats the checkpoint was TRAINED with.
 """
 
@@ -151,17 +152,18 @@ def main():
     # Both overridable from the shell so baseline vs candidate scoring never
     # requires editing this file:
     #   CHECKPOINT=... OUTPUT_DIR=... MIN_PT_EVAL=10 python scripts/test_...
-    checkpoint_path = Path(os.environ.get(
-        "CHECKPOINT", "checkpoints/ruche/ruche_Jul08_pointing_upgrade_full_2.pt"))
+    def _require_env(name):
+        v = os.environ.get(name)
+        if not v:
+            raise SystemExit(f"{name} must be set, e.g. {name}=... python scripts/test_eta_phi_pt_z0_charge.py")
+        return Path(v)
+
+    checkpoint_path = _require_env("CHECKPOINT")
     parquet_path = Path(os.environ.get(
         "PARQUET", "data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet"))
-    # CRITICAL after any dataset rebuild: a checkpoint must be decoded with the
-    # SAME target stats it was trained with. Point STATS_PATH at the versioned
-    # stats file matching the checkpoint being scored.
-    stats_path = Path(os.environ.get(
-        "STATS_PATH", "data/electrons/eta_phi_pt_z0_charge/target_stats.json"))
-    output_dir = Path(os.environ.get(
-        "OUTPUT_DIR", "results/ruche/Jul08_pointing_upgrade_full_2"))
+    # A checkpoint must be decoded with the SAME target stats it was trained with.
+    stats_path = _require_env("STATS_PATH")
+    output_dir = _require_env("OUTPUT_DIR")
 
     output_dir.mkdir(parents=True, exist_ok=True)
 

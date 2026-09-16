@@ -188,6 +188,7 @@ percolated blobs and recovers genuine electrons.
 - All resolutions are quoted without a pT floor, consistent with previous runs
   in this project, which also had no training or evaluation floor.
 
+## Reproducibility
 
 Truth-free build: branch `retreat-control`, commit `d9a357d`.
 Truth-free training: branch `attnpool-unsup-324ep`, commit `d9c4873`, Lyon job

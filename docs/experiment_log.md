@@ -34,7 +34,8 @@
 - region-split-experiment (Jun 30) -- single-head charge architecture, 41-dim
   features, barrel/endcap split, d0 notes. ADOPTED (single-head charge, 41-dim).
 - pointing-upgrade (Jul 08) -- feature stability: variance floors, cluster-
-  feature clipping, min-epochs floor. ADOPTED.
+  feature clipping, min-epochs floor. ADOPTED (code); the Jul08 runs from this
+  branch failed on charge and are kept as negatives.
 - Jun23 ConstChargeWeight -- fixed manual charge weight after homoscedastic
   weighting collapsed the BCE gradient. ADOPTED (charge uses a manual weight).
 
