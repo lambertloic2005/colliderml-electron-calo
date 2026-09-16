@@ -22,7 +22,7 @@ relative, z0[mm] RMSE; z0 prior[mm]).
 
 |eta| <= 1.7, pT > 10 GeV (endcap here = 1.5-1.7 only):
 
-- ab/baseline           -- AUC 0.891, eta 0.021, phi 0.017, pT 0.052, z0 42.1 (prior 54.6)
+- ab/baseline           -- AUC 0.891, eta 0.021, phi 0.016, pT 0.052, z0 42.1 (prior 54.6)
 - ab/candidate          -- AUC 0.895, eta 0.023, phi 0.016, pT 0.054, z0 47.3 (prior 54.6)
   (ab/candidate and ruche/Jul04_barrel are the same run under two paths.)
 
