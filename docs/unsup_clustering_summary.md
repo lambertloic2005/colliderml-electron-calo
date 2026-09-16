@@ -1,6 +1,4 @@
 # Calorimeter-only electron reconstruction with truth-free clustering
-
-Status note, 31 July 2026. L. Lambert.
 Dataset: ColliderML Release 1, `zee_pu200` (Z -> ee, PU200, OpenDataDetector).
 
 ## Summary
@@ -146,47 +144,6 @@ the containment measurement: log_sum_et is the pT anchor and is an energy sum,
 whereas the angular centroids are set by the high-energy core that survives
 thresholding.
 
-## Mechanism
-
-Containment. Sub-100 MeV cells are not a negligible halo. Applying the 100 MeV
-cut to supervised clusters leaves a median of 124 of 1352 cells carrying only
-0.610 of the deposited energy (5th percentile 0.239). The truth-free pipeline at
-the same threshold achieves a median E_cluster / E_truth of 0.576. Clustering
-therefore costs about 6 percent relative; the threshold costs 39 percent. Not
-knowing which cells belong to the electron is nearly free at this working point.
-What costs is that one cannot go below 100 MeV without percolating.
-
-Three candidate explanations for the endcap failure were tested and excluded.
-
-1. Energy threshold. Excluded: efficiency is flat in pT across a factor of five
-   in energy. A threshold effect would bite hardest at low pT.
-2. Shower fragmentation. Excluded: the median distance to the 4th nearest
-   neighbour among cells above threshold is 0.0010 in the barrel and 0.0021 at
-   |eta| in [2.5, 3.0], both 25 to 50 times below `eps = 0.05`. The core-point
-   fraction is 0.999 to 0.824. Endcap showers also carry four times *more* cells
-   above threshold than barrel showers (362 against 85). Connectivity is never
-   the limitation.
-3. Loss of bremsstrahlung handedness. Charge is the sign of the azimuthal bend,
-   so if the sub-threshold cells carried an asymmetric radiative fan, removing
-   them would destroy the charge signal. Measured on supervised clusters, the
-   charge-split bend asymmetry of the energy-weighted centroid is 0.02824 +-
-   0.00261 rad using all cells and 0.02873 +- 0.00200 rad using only cells above
-   100 MeV. Unchanged. The low-energy cells are isotropic and only dilute the
-   centroid (spread 0.1425 -> 0.1089). Excluded.
-
-What survives is merging. In the truth-free test set, matched clusters at
-|eta| in [2.0, 2.5] have a median of 279 cells and E_cluster / E_truth = 0.759,
-entirely healthy. At |eta| in [2.5, 3.0] the same quantities are 13,111 cells and
-9.19: the electron contributes about 11 percent of a percolated pileup blob that
-happened to land within the matching cone. The transition is abrupt rather than
-gradual. Most merged clusters do not land within the cone at all, which is the
-acceptance loss.
-
-This is the same mechanism seen globally in the threshold scan, where lowering
-`e_thresh_gev` to 0.02 produced a single connected component of 306,144 cells
-and collapsed efficiency to 2.3 percent. In the endcap it occurs at 0.10 because
-forward pileup density per unit (eta, phi) is much higher.
-
 ## Working point scan
 
 500 events, shards 0-4, truth pT >= 10 GeV. `sigLog` is the half 16-84 interval
@@ -231,32 +188,6 @@ percolated blobs and recovers genuine electrons.
 - All resolutions are quoted without a pT floor, consistent with previous runs
   in this project, which also had no training or evaluation floor.
 
-## Proposed next steps
-
-1. Implement local-maximum splitting in `cluster.py`, following ATLAS
-   topological clustering: seed on cells at 4 sigma above noise, grow through
-   2 sigma neighbours, then split clusters on local energy maxima. The absence
-   of a splitting step is the single structural gap that every diagnostic above
-   points at, and five shards are already downloaded for validation.
-2. If splitting recovers endcap efficiency, rebuild once with the correct
-   algorithm rather than twice with a threshold workaround. Adopt 0.08 in the
-   barrel at that point.
-3. Add an explicit |eta| <= 3 cut in `build_cluster_dataset.py`. Forward
-   electrons currently leak into diagnostics and are poorly reconstructed
-   (sigLog 0.47 to 0.66).
-4. Zero-shot measurement, still outstanding: score the supervised checkpoint on
-   truth-free clusters with the supervised normalisation. This separates the
-   deployment penalty from the irreducible one. Expected to show pT low by about
-   39 percent from the anchor shift, which is a calibration artifact rather than
-   an information loss.
-
-## Figures
-
-- `fig1_resolution_by_region.png` -- phi residual, relative pT residual and
-  charge ROC, barrel and endcap, supervised against truth-free, paired.
-- `fig2_efficiency.png` -- cluster-matching efficiency against |eta| and pT.
-
-## Reproducibility
 
 Truth-free build: branch `retreat-control`, commit `d9a357d`.
 Truth-free training: branch `attnpool-unsup-324ep`, commit `d9c4873`, Lyon job
