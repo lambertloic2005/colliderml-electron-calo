@@ -1,9 +1,4 @@
-# =============================================================================
-# JOB 1 -- RETREAT CONTROL -- branch: retreat-control
-# Paste as: scripts/test_eta_phi_pt_z0_charge.py   (keep this exact filename/path)
-# Same evaluation code as the combo-floor copy; only the default
-# CHECKPOINT/OUTPUT_DIR strings differ (env overrides supersede both anyway).
-# =============================================================================
+
 """
 Test / evaluate the eta + phi + pT + z0 + charge model.
 
