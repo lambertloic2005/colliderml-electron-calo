@@ -14,9 +14,9 @@ five per-electron quantities from calorimeter cells only:
 - longitudinal impact parameter, `z0`
 - electric charge sign, `q`
 
-`eta`, `phi`, and `pT` are predicted as residuals from physics-motivated
-anchors (see "Anchored residual predictions"). `z0` is regressed directly in
-z-scored units, with the pointing-fit anchor supplied as an input feature.
+`eta`, `phi`, and `pT` are predicted as residuals from anchors computed from the
+shower (see "Anchored residual predictions"). `z0` is regressed directly in
+z-scored units; its pointing-fit anchor is an input feature, not a residual base.
 Charge is a binary classification output.
 
 ## Project goal
@@ -79,9 +79,13 @@ High-level per-cell features include `log(cell_e_calibrated)`, `cell_eta`,
 
 ### Cluster-level inputs
 
-Computed from the full shower and broadcast to every cell: log total calibrated
-energy, log transverse-energy proxy, log cell count, phi and eta shower-shape
-widths and skewnesses, and a `z0` pointing anchor. The phi skewness is physically
+Computed from the full shower and broadcast to every cell (29 values): log total
+calibrated energy, log transverse-energy proxy, log cell count, phi and eta
+energy-weighted widths and skewnesses, the z0 pointing anchor, the r-z pointing
+slope, the radial spread and RMS residual of the pointing fit, and a 6-slice
+radial profile (mean radius, mean z relative to the anchor, and energy fraction
+per slice). With the 12 per-cell features (log E, eta, sin and cos of
+centroid-relative phi, theta, cos theta, 6-way detector one-hot), the total is 41. The phi skewness is physically
 meaningful: the bremsstrahlung tail is asymmetric in a charge-dependent way.
 
 The pointing fit also contributes its slope, radial spread and fit RMS, and a
@@ -140,13 +144,14 @@ The model produces five values:
 ```
 
 The first three are residuals added to their anchors; the fourth is z0 in
-z-scored units; the fifth is a raw classification logit. Decoding at evaluation:
+z-scored units (train-split mean and std); the fifth is a raw classification
+logit. Decoding at evaluation:
 
 ```text
 pred_eta    = eta_centroid + delta_eta
 pred_phi    = wrap(phi_centroid + delta_phi)          # single signed correction
 pred_pt     = exp(log_sum_et + delta_log_pt)          # GeV
-pred_z0     = z0_mean + z0_norm * z0_std              # mm; no anchor added
+pred_z0     = z0_mean + z0_norm * z0_std              # mm, direct regression
 pred_charge = +1 (positron) if sigmoid(charge_logit) > 0.5 else -1 (electron)
 ```
 
@@ -159,15 +164,12 @@ to a physics-motivated anchor, which is already a strong first estimate:
 - `phi_centroid`: energy-weighted azimuth, `atan2(<sin phi>, <cos phi>)`.
 - `log_sum_et`: log of the total transverse-energy proxy. For a contained
   electromagnetic shower this is already close to `log(pT)`.
-- `z0_anchor`: energy-weighted least-squares fit of cell `z` against cell
-  radius `r`, extrapolated to `r = 0`. It is an input feature, not a residual
-  base. On its own it is a poor estimator (anchor-only RMSE 300-540 mm on the
-  tracked pT > 10 GeV runs, vs a ~54 mm beamspot prior). Magnetic bending is not
-  the limitation: for a helix, z is linear in transverse arc length, which equals
-  r to better than 0.1 percent for pT > 10 GeV at calorimeter radii (R = pT/0.3B
-  is of order 10 m for the ODD 2 T field). The errors are shower-related. In the
-  endcap the radial lever arm along the shower axis is comparable to the lateral
-  shower spread, which plausibly explains why z0 is not measured there.
+- `z0_anchor` (input feature only, not a residual base): energy-weighted
+least-squares fit of cell z versus cell radius r, extrapolated to r = 0. The
+solenoid bends only in the transverse plane, so the r-z trajectory is close to
+a straight line, but the fit's lever arm (the shower's radial extent) is short
+compared with the extrapolation to the beamline. The anchor alone is therefore
+poor (299-540 mm RMSE in the tracked runs, worse than the beamspot prior).
 
 ## Phi and charge
 
@@ -194,10 +196,9 @@ for any configuration choice.
 
 ## Loss function
 
-The four regression targets use a Huber loss, which is robust to shower
-outliers. eta, phi (wrapped) and log(pT) are compared as anchor residuals in
-physical units (Huber delta 0.1, 0.05 rad, 0.2); z0 is compared in z-scored
-units (delta 1.0). The learned sigmas are in these same units.
+eta, phi and log(pT) use a Huber loss on the residual from their anchor, in
+physical units (Huber delta = 0.1, 0.05 rad, and 0.2 respectively; the phi
+residual is wrapped). z0 uses a Huber loss on the z-scored target (delta = 1.0).
 
 The four regression losses are combined with **homoscedastic uncertainty
 weighting**: a learned per-task `log_sigma` (four parameters) sets each task's
@@ -339,8 +340,7 @@ scoring a checkpoint through the wrong branch's dataset code causes silent shape
 mismatches:
 
 ```bash
-python -c "import torch; print(torch.load('CKPT.pt', map_location='cpu')['config']['high_level_dim'])"
-env CHECKPOINT=CKPT.pt STATS_PATH=/path/to/target_stats.json OUTPUT_DIR=results/<run_name> python scripts/test_eta_phi_pt_z0_charge.py
+env CHECKPOINT=CKPT.pt STATS_PATH=target_stats.json OUTPUT_DIR=results/myrun python scripts/test_eta_phi_pt_z0_charge.py
 ```
 
 Optional eval cuts: `MIN_PT_EVAL`, `MAX_ABS_ETA_EVAL`, `MIN_ABS_ETA_EVAL`.
