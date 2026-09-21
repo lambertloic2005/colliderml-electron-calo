@@ -131,9 +131,10 @@ output_dim      = 5
 Note: the `AttnPoolCaloRegressor.__init__` defaults (`model_dim = 256`,
 `n_layers = 6`, `n_heads = 8`) are **not** the trained configuration. The config
 dict in `scripts/train_eta_phi_pt_z0_charge.py` overrides them to 128 / 3 / 4.
-Scaling capacity up under a fixed epoch budget was tested and degraded charge via
-phi-resolution collapse (step starvation, not overfitting); the smaller model is
-the deliberate champion.
+A larger model (256 / 6 / 8) trained for the same number of optimizer steps lost
+charge performance, with phi core resolution degrading from about 0.007 to
+0.023 rad. The working interpretation is that the larger model needs more steps
+before the charge head lifts off; this has not been tested with a longer run.
 
 ## Model output
 
@@ -212,17 +213,9 @@ This balances tasks in very different natural units (eta units, radians, log-pT,
 z-scored z0) without hand-tuning. The learned `log_sigma` converges to
 `sigma^2 ~ 2 * E[Huber loss]`, so it tracks the tail-insensitive **core** of the
 resolution rather than the RMS.
-
-Charge is a classification task and does **not** share the Gaussian-noise
-assumption the homoscedastic scheme is derived for. Putting the BCE term under a
-learned weight collapses the charge gradient to zero. Charge therefore uses a
-**fixed manual weight** and is added after the weighted regression sum:
-
-```text
-total_loss = total_reg_loss + charge_weight * BCE(charge_logit, charge_label)
-```
-
-with `charge_weight = 1.0` and `charge_label = 1` for positrons (`q = +1`).
+Charge is kept outside the learned weighting with a fixed weight of 1.0. In the
+Jun23 runs the charge head did not train under the learned weighting and did
+train with the fixed weight; the mechanism was not isolated.
 
 ## Evaluation quantities
 
@@ -234,14 +227,12 @@ with `charge_weight = 1.0` and `charge_label = 1` for positrons (`q = +1`).
   resolution and the beamspot-prior RMS. A useful model must beat both.
 - charge: ROC AUC and accuracy versus pT, plus calibration.
 
-In the barrel the network beats the beamspot prior on z0: about 39 mm RMSE on
-the tracked July runs (|eta| < 1.5, pT > 10 GeV, prior 54 mm) and 34.8 mm core
-sigma for the AttnPool reference on the paired set in
-docs/unsup_clustering_summary.md. In the endcap z0 is not measured (it sits at
-the ~57-58 mm prior). Whether the barrel value is a calorimeter-only ceiling is
-not established. Endcap charge is physics-limited, because forward
-trajectories nearly parallel to the solenoid field make the azimuthal bend, and
-hence the charge sign, intrinsically hard to resolve.
+In the tracked pre-AttnPool runs (pT > 10 GeV), barrel z0 RMSE is about 39 mm
+against a 54 mm beamspot prior; over |eta| <= 1.7 it is 42-47 mm. In the endcap
+z0 does not beat the prior. Whether the barrel value is a calorimeter-only limit
+has not been established. Endcap charge is harder: a forward electron reaches the calorimeter at a
+smaller transverse radius, so the charge-dependent azimuthal displacement
+(proportional to r / pT) is smaller than in the barrel.
 
 ## Repository layout
 
@@ -355,10 +346,10 @@ Any difference reported as a result is first run through the pre-registered
 paired bootstrap (`compare_preds_bootstrap.py`, 2000 resamples). Evaluation
 criteria and the comparison population are fixed before results are examined.
 The between-seed sd of barrel charge AUC on the current dataset generation is
-0.0065 (docs/unsup_clustering_summary.md). The 0.017 spread of the tracked July
-benchmark runs is not a seed variance: those runs predate AttnPool, appear to
-mix configurations, and were selected on the charge head having trained. Locally trained checkpoints from secondary machines are not entered into the
-summary comparisons.
+0.0065 (docs/unsup_clustering_summary.md); the seeds behind it should be listed
+from W&B. The 0.017 spread of the three tracked July benchmark runs is not a
+seed variance: they mix configurations and were selected on the charge head
+having trained.
 
 ## Status
 
