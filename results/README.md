@@ -14,6 +14,7 @@ Note on the champion: none of the run directories below is an AttnPool run.
 The supervised AttnPool reference (attnpool-200ep, 770ba8a, Lyon job 55426542)
 has no tracked test_metrics.json; its paired numbers are in
 docs/unsup_clustering_summary.md and summarized in docs/supervised_status.md.
+They need to be recomputed; see the caveats in docs/unsup_clustering_summary.md.
 
 ## Tracked July runs (pre-AttnPool, full target set)
 

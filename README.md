@@ -190,9 +190,9 @@ no truth charge at inference: charge comes only from the learned logit.
 The charge signal is fundamentally the sign of the azimuthal bend, so phi
 resolution is the leading indicator for charge performance. The charge head is
 slow to train. How many optimizer steps it needs before lifting off the 0.5
-chance line depends on the configuration (about 90,000 for <config>, see
-docs/supervised_status.md), so comparisons between configurations should hold
-the step count fixed rather than the epoch count.
+chance line depends on the configuration (about 90,000 in earlier
+configurations, see docs/supervised_status.md), so comparisons between
+configurations should hold the step count fixed rather than the epoch count.
 
 ## Loss function
 
@@ -228,8 +228,10 @@ train with the fixed weight; the mechanism was not isolated.
 
 In the tracked pre-AttnPool runs (pT > 10 GeV), barrel z0 RMSE is about 39 mm
 against a 54 mm beamspot prior; over |eta| <= 1.7 it is 42-47 mm. In the endcap
-z0 does not beat the prior. Whether the barrel value is a calorimeter-only limit
-has not been established. Endcap charge is harder: a forward electron reaches the calorimeter at a
+z0 does not beat the prior. Whether the barrel value is a calorimeter-only
+limit has not been established.
+
+Endcap charge is harder: a forward electron reaches the calorimeter at a
 smaller transverse radius, so the charge-dependent azimuthal displacement
 (proportional to r / pT) is smaller than in the barrel.
 
@@ -266,6 +268,7 @@ scripts/train_eta_phi_pt_z0_charge.py   train the AttnPool champion
 scripts/test_eta_phi_pt_z0_charge.py    evaluate: residuals, resolutions, charge ROC
 scripts/compare_preds_bootstrap.py      paired bootstrap for A/B comparisons
 scripts/compare_regions_bootstrap.py    barrel-vs-endcap bootstrap
+scripts/check_pairing.py                diagnostic: cross-dataset pairing loss
 scripts/make_summary_figs.py            summary figures
 scripts/check_dims.py                   preflight: verify high_level_dim / output_dim
 ```
@@ -345,10 +348,10 @@ Any difference reported as a result is first run through the pre-registered
 paired bootstrap (`compare_preds_bootstrap.py`, 2000 resamples). Evaluation
 criteria and the comparison population are fixed before results are examined.
 The between-seed sd of barrel charge AUC on the current dataset generation is
-0.0065 (docs/unsup_clustering_summary.md); the seeds behind it should be listed
-from W&B. The 0.017 spread of the three tracked July benchmark runs is not a
-seed variance: they mix configurations and were selected on the charge head
-having trained.
+0.0065. The runs behind this number are not recorded in the repo; the seed list
+has to be recovered from W&B. The 0.017 spread of the three tracked July
+benchmark runs is not a seed variance: they mix configurations and were
+selected on the charge head having trained.
 
 ## Status
 

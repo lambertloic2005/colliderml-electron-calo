@@ -17,6 +17,10 @@ In the endcap (1.5 < |eta| < 3.0) the pipeline fails, recovering only 36.2
 percent of electrons, and the survivors are also measured worse (charge AUC
 -0.116, pT resolution 2.9 -> 7.7 percent).
 
+All deltas in this summary come from the paired comparison below, which needs
+to be recomputed (see the caveats). The barrel phi and eta changes are also not
+yet separated from seed noise.
+
 ## What was built
 
 Truth-free pipeline (`cluster_pipeline.build_cluster_table`, branch
@@ -61,11 +65,11 @@ Identical architecture on both datasets: `AttnPoolCaloRegressor`, model_dim 128,
 cells by energy into the encoder. `src/colliderml_electron/dataset.py` is
 byte-identical between the two branches, so no feature-set drift is possible.
 
-Optimizer steps were matched rather than epochs, because the charge head
-needs a configuration-dependent number of steps before lift-off (about 90,000
-in <config>) and the truth-free training set is smaller. Supervised: 200 epochs, 113,427 training electrons
-after the |eta| <= 3 cut, 236,400 steps. Truth-free: 324 epochs, 77,196
-electrons, 260,820 steps.
+Optimizer steps rather than epochs were meant to be matched, because the charge
+head needs a configuration-dependent number of steps before lift-off (about
+90,000 in earlier configurations) and the truth-free training set is smaller.
+Supervised: 200 epochs, 113,427 training electrons after the |eta| <= 3 cut,
+236,400 steps. Truth-free: 324 epochs, 77,196 electrons, 260,820 steps.
 
 Correction to note: the 324-epoch figure was chosen against an assumed
 supervised training size of 124,906, which was the pre-cut count. Against the
@@ -101,13 +105,13 @@ over a factor of five in energy.
 
 Paired bootstrap, 2000 resamples, on 13,964 matched electrons. This pairing is
 incomplete (see the first caveat below), so the numbers in this section need to
-be recomputed with the fixed matching before they are quoted. Significance means the 95 percent CI of the paired delta excludes
-zero. The bootstrap only resamples test electrons. Each side is one trained
-model with one seed, so training variance is not in these CIs. The charge AUC
-deltas are still far outside the between-seed sd of 0.0065 in barrel charge
-AUC. There is no seed variance for the resolutions, so the small barrel phi and
-eta deltas could be seed noise and should not be quoted as real differences
-yet.
+be recomputed with the fixed matching before they are quoted. Significance
+means the 95 percent CI of the paired delta excludes zero. The bootstrap only
+resamples test electrons. Each side is one trained model with one seed, so
+training variance is not in these CIs. The charge AUC deltas are still far
+outside the between-seed sd of 0.0065 in barrel charge AUC. There is no seed
+variance for the resolutions, so the small barrel phi and eta deltas could be
+seed noise and should not be quoted as real differences yet.
 
 Barrel, |eta| < 1.5, n = 10,825:
 

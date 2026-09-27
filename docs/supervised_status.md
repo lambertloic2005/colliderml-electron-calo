@@ -32,8 +32,8 @@ These are Gaussian-core sigmas on a selected population, not full-test-set
 RMSEs. That population is also incomplete: the matching dropped about 15
 percent of genuine pairs, more in the endcap (see the caveats in
 `unsup_clustering_summary.md`), so these values need to be recomputed before
-they are quoted. Full-population numbers for this checkpoint still need to be pulled
-from W&B or regenerated before quoting a headline.
+they are quoted. Full-population numbers for this checkpoint still need to be
+pulled from W&B or regenerated before quoting a headline.
 
 ## What the tracked July runs show
 
@@ -67,11 +67,11 @@ counts are not recorded here.
 ## Seed variance
 
 The between-seed sd of barrel charge AUC on the current dataset generation is
-0.0065 (`unsup_clustering_summary.md`); the seeds behind it should be listed
-from W&B. The 0.017 spread of the three July runs is not a seed variance: they
-predate AttnPool, appear to mix two configurations (baseline and combo were
-scored with different test-script versions), and were selected on the charge
-head having trained.
+0.0065. The runs behind this number are not recorded in the repo; the seed list
+has to be recovered from W&B. The 0.017 spread of the three July runs is not a
+seed variance: they predate AttnPool, appear to mix two configurations
+(baseline and combo were scored with different test-script versions), and were
+selected on the charge head having trained.
 
 ## z0
 
@@ -81,9 +81,11 @@ the anchor is noisy, not that the network has saturated.
 
 ## Open items
 
-- The champion run directory (`attnpool-200ep`, `770ba8a`, job 55426542) is
-  /pbs/home/l/llambert/cc-attn200/runs/lyon_eta_phi_pt_z0_charge_full_seed0_20260730_104715_55426542 on Lyon; W&B run <link>. Its full test-set metrics are not in the
-  repo yet; rerun scripts/test_eta_phi_pt_z0_charge.py on it to get them.
+- The champion run directory (`attnpool-200ep`, `770ba8a`, job 55426542) on
+  Lyon is
+  /pbs/home/l/llambert/cc-attn200/runs/lyon_eta_phi_pt_z0_charge_full_seed0_20260730_104715_55426542
+  Its full test-set metrics are not in the repo yet; rerun
+  scripts/test_eta_phi_pt_z0_charge.py on it to get them.
 - All paired supervised vs truth-free numbers (here and in
   `unsup_clustering_summary.md`) need recomputing with the fixed matching in
   `compare_regions_bootstrap.py`. Before that, decide whether the headline
@@ -94,8 +96,8 @@ the anchor is noisy, not that the network has saturated.
   variance for any of the resolutions.
 - Only the `PER_REGION_PROJ=1` run exists. The flag-off twin (same parquet,
   seed and N_EPOCHS) was never run, so there is no result for this yet.
-- The about 90,000 steps to charge lift-off was measured on <config>.
-  AttnPool lifted off earlier and this was not re-measured.
+- The about 90,000 steps to charge lift-off comes from earlier configurations.
+  AttnPool lifted off earlier and its step count at lift-off was not measured.
 - Why the supervised pipeline drops some electrons is not traced in the code.
   The guess is zero truth-linked cells. The 14.9 percent figure that seemed to
   support this was a matching artifact (see `unsup_clustering_summary.md`).
