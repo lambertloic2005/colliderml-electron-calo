@@ -29,7 +29,10 @@ pipelines):
   pT sigma 2.9 percent, z0 sigma 55.0 mm (beamspot prior about 57 mm)
 
 These are Gaussian-core sigmas on a selected population, not full-test-set
-RMSEs. Full-population numbers for this checkpoint still need to be pulled
+RMSEs. That population is also incomplete: the matching dropped about 15
+percent of genuine pairs, more in the endcap (see the caveats in
+`unsup_clustering_summary.md`), so these values need to be recomputed before
+they are quoted. Full-population numbers for this checkpoint still need to be pulled
 from W&B or regenerated before quoting a headline.
 
 ## What the tracked July runs show
@@ -76,3 +79,25 @@ In the barrel the network gets well below the prior. Whether this is a
 calorimeter-only ceiling is open; the poor anchor-only RMSE (300-540 mm) shows
 the anchor is noisy, not that the network has saturated.
 
+## Open items
+
+- The champion run directory (`attnpool-200ep`, `770ba8a`, job 55426542) is
+  /pbs/home/l/llambert/cc-attn200/runs/lyon_eta_phi_pt_z0_charge_full_seed0_20260730_104715_55426542 on Lyon; W&B run <link>. Its full test-set metrics are not in the
+  repo yet; rerun scripts/test_eta_phi_pt_z0_charge.py on it to get them.
+- All paired supervised vs truth-free numbers (here and in
+  `unsup_clustering_summary.md`) need recomputing with the fixed matching in
+  `compare_regions_bootstrap.py`. Before that, decide whether the headline
+  resolutions use all pT or pT >= 10 GeV to match the acceptance population.
+  `compare_preds_bootstrap.py` still uses rounded keys and should not be used
+  with `--cross-dataset` until it gets the same fix.
+- The 0.0065 seed sd still needs its seed list from W&B. There is no seed
+  variance for any of the resolutions.
+- Only the `PER_REGION_PROJ=1` run exists. The flag-off twin (same parquet,
+  seed and N_EPOCHS) was never run, so there is no result for this yet.
+- The about 90,000 steps to charge lift-off was measured on <config>.
+  AttnPool lifted off earlier and this was not re-measured.
+- Why the supervised pipeline drops some electrons is not traced in the code.
+  The guess is zero truth-linked cells. The 14.9 percent figure that seemed to
+  support this was a matching artifact (see `unsup_clustering_summary.md`).
+- Scoring the supervised checkpoint on the truth-free dataset (zero-shot) was
+  never run.

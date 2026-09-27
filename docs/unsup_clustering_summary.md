@@ -61,9 +61,9 @@ Identical architecture on both datasets: `AttnPoolCaloRegressor`, model_dim 128,
 cells by energy into the encoder. `src/colliderml_electron/dataset.py` is
 byte-identical between the two branches, so no feature-set drift is possible.
 
-Optimizer steps were matched rather than epochs, because the charge head is
-known to require roughly 90,000 steps before lift-off and the truth-free
-training set is smaller. Supervised: 200 epochs, 113,427 training electrons
+Optimizer steps were matched rather than epochs, because the charge head
+needs a configuration-dependent number of steps before lift-off (about 90,000
+in <config>) and the truth-free training set is smaller. Supervised: 200 epochs, 113,427 training electrons
 after the |eta| <= 3 cut, 236,400 steps. Truth-free: 324 epochs, 77,196
 electrons, 260,820 steps.
 
@@ -99,8 +99,9 @@ over a factor of five in energy.
 
 ## Resolution, paired by region
 
-Paired bootstrap, 2000 resamples, on the 13,964 electrons reconstructed by both
-pipelines. Significance means the 95 percent CI of the paired delta excludes
+Paired bootstrap, 2000 resamples, on 13,964 matched electrons. This pairing is
+incomplete (see the first caveat below), so the numbers in this section need to
+be recomputed with the fixed matching before they are quoted. Significance means the 95 percent CI of the paired delta excludes
 zero. The bootstrap only resamples test electrons. Each side is one trained
 model with one seed, so training variance is not in these CIs. The charge AUC
 deltas are still far outside the between-seed sd of 0.0065 in barrel charge
@@ -168,18 +169,29 @@ percolated blobs and recovers genuine electrons.
 
 ## Caveats
 
-- 14.9 percent of truth-free test electrons are absent from the supervised test
-  set. These are electrons the supervised pipeline rejected. Some are genuine
-  recoveries, some are clusters matched to electrons that deposited
-  essentially nothing. They are excluded
-  from the paired comparison but they inflate the raw metrics in the truth-free
-  test log, which is why only the paired numbers should be quoted.
-- The endcap efficiency curve in the scan is an upper bound for the same reason.
+- The pairing matched the two preds.npz files on truth (eta, phi, pT) rounded to
+  6, 6 and 4 decimals. The two files decode truth with different target stats,
+  so the float32 values differ in the last bits and 2,398 genuine pairs (14.7
+  percent) failed to match: 13.3 percent in the barrel, 18.9 percent in the
+  endcap. With a looser match 16,362 of the 16,411 truth-free test electrons
+  pair up (all pT), and 15,240 at pT >= 10 GeV, |eta| <= 3, against 15,267 in
+  the acceptance count. `scripts/check_pairing.py` reproduces this.
+  `compare_regions_bootstrap.py` now matches within a tolerance but has not
+  been rerun on these files yet.
+- An earlier version of this note said 14.9 percent of truth-free test
+  electrons were absent from the supervised test set and read them as
+  electrons the supervised pipeline rejected. That figure is 1 - 13,964/16,411,
+  the same matching loss. Only 49 (0.3 percent) are actually unmatched.
+- The endcap efficiency curve in the scan may be an upper bound. The argument
+  for this relied on the 14.9 percent figure above and needs rechecking.
 - The scan holds `eps = 0.05` and `min_samples = 4` fixed while the threshold
   varies. Percolation depends on density and reach jointly, so these are not
   independent knobs and a two-dimensional scan would be more informative.
 - All resolutions are quoted without a pT floor, consistent with previous runs
-  in this project, which also had no training or evaluation floor.
+  in this project, which also had no training or evaluation floor. The paired
+  set therefore includes electrons down to a few MeV, while the acceptance
+  numbers above use pT >= 10 GeV, so the two sections describe different
+  populations.
 
 ## Reproducibility
 

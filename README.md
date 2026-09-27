@@ -88,8 +88,6 @@ per slice). With the 12 per-cell features (log E, eta, sin and cos of
 centroid-relative phi, theta, cos theta, 6-way detector one-hot), the total is 41. The phi skewness is physically
 meaningful: the bremsstrahlung tail is asymmetric in a charge-dependent way.
 
-The pointing fit also contributes its slope, radial spread and fit RMS, and a
-K = 6 radial profile (<z> - anchor, <r>, energy fraction per slice; 18 values).
 `phi_slope` is computed but not exposed in the 41-dim set.
 
 The full high-level input vector is **41-dimensional** (`high_level_dim = 41`).
@@ -191,9 +189,10 @@ no truth charge at inference: charge comes only from the learned logit.
 
 The charge signal is fundamentally the sign of the azimuthal bend, so phi
 resolution is the leading indicator for charge performance. The charge head is
-slow to train and needs on the order of 90,000+ optimizer steps before it lifts
-off the 0.5 chance line, which makes the total step count the governing quantity
-for any configuration choice.
+slow to train. How many optimizer steps it needs before lifting off the 0.5
+chance line depends on the configuration (about 90,000 for <config>, see
+docs/supervised_status.md), so comparisons between configurations should hold
+the step count fixed rather than the epoch count.
 
 ## Loss function
 

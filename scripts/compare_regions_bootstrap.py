@@ -11,17 +11,23 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from compare_preds_bootstrap import _load_raw, _keys, _residuals, _metrics
 
 
-def _match(a, b):
-    keys_a, keys_b = _keys(a), _keys(b)
-    index_a = {}
-    for i, k in enumerate(keys_a):
-        index_a.setdefault(k, i)
-    ia, ib = [], []
-    for j, k in enumerate(keys_b):
-        i = index_a.get(k)
-        if i is not None:
-            ia.append(i); ib.append(j)
-    return np.asarray(ia, dtype=int), np.asarray(ib, dtype=int)
+def _match(a, b, tol=1e-4):
+    # Nearest-neighbour match on truth (eta, phi, log pT). The two files decode
+    # truth with different target stats, so the float32 values differ in the
+    # last bits and exact matching on rounded keys silently drops real pairs.
+    from scipy.spatial import cKDTree
+
+    def pts(d):
+        return np.column_stack([d["truth_eta"], d["truth_phi"],
+                                np.log(d["truth_pt"])])
+
+    dist, ia = cKDTree(pts(a)).query(pts(b), k=1)
+    ok = dist < tol
+    ib = np.nonzero(ok)[0]
+    ia = ia[ok]
+    vals, counts = np.unique(ia, return_counts=True)
+    keep = ~np.isin(ia, vals[counts > 1])   # drop any non one-to-one match
+    return ia[keep].astype(int), ib[keep].astype(int)
 
 
 def main():

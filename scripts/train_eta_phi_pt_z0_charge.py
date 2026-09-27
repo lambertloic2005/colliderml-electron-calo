@@ -260,7 +260,7 @@ def main():
     torch.cuda.manual_seed_all(SEED)
 
     config = {
-        "architecture": "concat_transformer_eta_phi_pt_z0_charge",
+        "architecture": "attnpool_eta_phi_pt_z0_charge",
         "high_level_dim": 41,
         "region": REGION,
         "max_abs_eta": _REGION_ETA[REGION]["max_abs_eta"],
