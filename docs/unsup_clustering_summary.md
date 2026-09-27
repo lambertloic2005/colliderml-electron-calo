@@ -101,8 +101,12 @@ over a factor of five in energy.
 
 Paired bootstrap, 2000 resamples, on the 13,964 electrons reconstructed by both
 pipelines. Significance means the 95 percent CI of the paired delta excludes
-zero. For reference, the between-seed standard deviation on this dataset
-generation is 0.0065 in barrel charge AUC.
+zero. The bootstrap only resamples test electrons. Each side is one trained
+model with one seed, so training variance is not in these CIs. The charge AUC
+deltas are still far outside the between-seed sd of 0.0065 in barrel charge
+AUC. There is no seed variance for the resolutions, so the small barrel phi and
+eta deltas could be seed noise and should not be quoted as real differences
+yet.
 
 Barrel, |eta| < 1.5, n = 10,825:
 
