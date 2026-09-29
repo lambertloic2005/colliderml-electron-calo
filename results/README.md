@@ -44,8 +44,10 @@ Barrel, pT > 10 GeV (seed-variation benchmark set):
   failed to lift off (AUC 0.52, 0.62). Anchor-only z0 RMSE is 1500-1870 mm on
   this wider population (not directly comparable to the pT > 10 GeV runs).
   RETIRED negatives.
-- ruche/Jun23_ConstChargeWeight -- fixed manual charge weight; AUC 0.816 but
-  large phi/pT RMSE. RETIRED.
+- ruche/Jun23_ConstChargeWeight -- first run with charge on a fixed weight outside
+  the learned weighting (the scheme still used). AUC 0.816 overall, 0.898 barrel.
+  Its phi/pT RMSEs are on |eta| <= 3 with no pT cut, like Jul08, and are not
+  comparable to the pT > 10 GeV runs. Method ADOPTED; run superseded.
 - ruche/Jun23_singlePhi, Jun23_singlePhi_z0Slice -- single-phi-head development.
 - ruche/Jun19_first, Jun19_z0AnchorFix_homoscedastic, Jun19_z0Slice -- z0 anchor
   and homoscedastic-weighting development.
