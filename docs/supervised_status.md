@@ -96,8 +96,11 @@ the anchor is noisy, not that the network has saturated.
   seed and N_EPOCHS) was never run, so there is no result for this yet.
 - The about 90,000 steps to charge lift-off comes from earlier configurations.
   AttnPool lifted off earlier and its step count at lift-off was not measured.
-- Why the supervised pipeline drops some electrons is not traced in the code.
-  The guess is zero truth-linked cells. The 14.9 percent figure that seemed to
-  support this was a matching artifact (see `unsup_clustering_summary.md`).
+- Supervised electron loss is traced in code: build_electron_row drops an
+  electron only when its descendant family has zero truth-linked cells (the DBSCAN
+  clean falls back to keeping all cells and cannot empty it); duplicates on
+  rounded (px, py, pz, pdg) are also collapsed. The per-worker "skipped by cuts"
+  counts in the atlas build logs give the number. Which electrons these are
+  (acceptance, soft, gaps) is not characterized.
 - Scoring the supervised checkpoint on the truth-free dataset (zero-shot) was
   never run.
