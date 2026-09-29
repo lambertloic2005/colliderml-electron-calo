@@ -30,7 +30,9 @@
 
 - Add-z0-and-charge (Jun 22) -- z0 target and first charge attempt. ADOPTED.
 - Jun19 z0 anchor fix (pointing anchor, beamspot z-scoring) -- fixed a pointing-
-  anchor failure. ADOPTED; z0 now anchored on the pointing fit.
+  anchor failure. ADOPTED; the pointing-fit z0_anchor is an input feature. In the
+  current code z0 is regressed directly in z-scored units, not as a residual
+  from the anchor.
 - region-split-experiment (Jun 30) -- single-head charge architecture, 41-dim
   features, barrel/endcap split, d0 notes. ADOPTED (single-head charge, 41-dim).
 - pointing-upgrade (Jul 08) -- feature stability: variance floors, cluster-
