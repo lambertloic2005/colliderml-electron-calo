@@ -365,6 +365,3 @@ learned-sigma instrumentation; W&B logging.
 
 Open items are tracked in `docs/supervised_status.md`.
 
-## License
-
-MIT
