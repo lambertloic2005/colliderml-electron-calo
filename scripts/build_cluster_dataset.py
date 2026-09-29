@@ -30,7 +30,10 @@ def main():
                    help="Also write background clusters (null targets, is_electron=0).")
 
     p.add_argument("--out", default="data/clusters/clusters.parquet")
-
+    p.add_argument("--shard-min", type=int, default=None)
+    p.add_argument("--shard-max", type=int, default=None)
+    p.add_argument("--task-id", type=int, default=0)
+    p.add_argument("--n-tasks", type=int, default=1)
     a = p.parse_args()
     build_cluster_table(
         channel=a.channel,
@@ -43,6 +46,10 @@ def main():
         dR_match=a.dR_match,
         keep_unmatched=a.keep_unmatched,
         out_path=a.out,
+        shard_min=a.shard_min,
+        shard_max=a.shard_max,
+        task_id=a.task_id,
+        n_tasks=a.n_tasks,
     )
 
 
