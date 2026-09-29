@@ -29,8 +29,7 @@ tracker-versus-calorimeter complementarity.
 
 Two reconstruction regimes are studied:
 
-- **Supervised (this README).** Cells are selected using truth association, so
-  the model is tested on how well it learns kinematics from a clean shower. This
+- **Supervised (this README).** Cells are selected by truth association (cells with    energy from the electron or its descendants), then cleaned by DBSCAN in (eta, phi) (eps 0.08, min_samples 2), keeping the cluster that contains the cell nearest the truth direction. Truth selects and anchors the cells; DBSCAN only removes outliers. Despite the "supervised_dbscan" file names, this is not the truth-free pipeline. This
   is the main training and evaluation path.
 - **Truth-free.** A DBSCAN clustering pipeline selects cells with no truth input.
   This measures what is lost moving toward a realistic pipeline. It is documented
@@ -53,6 +52,12 @@ and reused unchanged for validation and test.
 
 Large data and checkpoint files are not tracked in git (see `.gitignore`). The
 parquet tables live outside the repository on the compute hosts.
+
+Two dataset generations exist. v1 (about 30k electrons, used until mid-July
+2026) is behind every tracked test_metrics.json in results/. v2 (178,602
+electrons, 96,553 events, shards 0-999) is current; harmonize_splits.py keeps
+every v1 event in its v1 split. Tracked July numbers and AttnPool numbers are
+therefore not on the same test population.
 
 ## Model inputs
 
