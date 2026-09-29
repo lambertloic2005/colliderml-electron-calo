@@ -268,7 +268,10 @@ src/colliderml_electron/model.py        ConcatCaloRegressor / ConvCaloRegressor 
 Key scripts:
 
 ```text
-scripts/build_electron_dataset.py       build the supervised per-electron parquet
+scripts/chunked_build_atlas.sh          build the v2 supervised parquet on atlas
+                                        (fetch_and_cluster.py process + merge)
+scripts/harmonize_splits.py             carry v1 split assignments into rebuilds
+scripts/build_electron_dataset.py       small local builds (default --mask cone)
 scripts/train_eta_phi_pt_z0_charge.py   train the AttnPool champion
 scripts/test_eta_phi_pt_z0_charge.py    evaluate: residuals, resolutions, charge ROC
 scripts/compare_preds_bootstrap.py      paired bootstrap for A/B comparisons
