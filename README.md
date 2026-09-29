@@ -29,8 +29,12 @@ tracker-versus-calorimeter complementarity.
 
 Two reconstruction regimes are studied:
 
-- **Supervised (this README).** Cells are selected by truth association (cells with    energy from the electron or its descendants), then cleaned by DBSCAN in (eta, phi) (eps 0.08, min_samples 2), keeping the cluster that contains the cell nearest the truth direction. Truth selects and anchors the cells; DBSCAN only removes outliers. Despite the "supervised_dbscan" file names, this is not the truth-free pipeline. This
-  is the main training and evaluation path.
+- **Supervised (this README).** Cells are selected by truth association (cells
+  with energy from the electron or its descendants), then cleaned by DBSCAN in
+  (eta, phi) (eps 0.08, min_samples 2), keeping the cluster that contains the
+  cell nearest the truth direction. Truth selects and anchors the cells; DBSCAN
+  only removes outliers. Despite the "supervised_dbscan" file names, this is not
+  the truth-free pipeline. This is the main training and evaluation path.
 - **Truth-free.** A DBSCAN clustering pipeline selects cells with no truth input.
   This measures what is lost moving toward a realistic pipeline. It is documented
   separately in `docs/unsup_clustering_summary.md`.
