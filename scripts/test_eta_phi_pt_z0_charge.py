@@ -29,7 +29,6 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import roc_auc_score
 import torch
 import wandb
 from sklearn.metrics import roc_auc_score
