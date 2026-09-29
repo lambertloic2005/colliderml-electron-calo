@@ -57,18 +57,16 @@ def wrapped_angle_delta(pred_phi: torch.Tensor, true_phi: torch.Tensor) -> torch
 
 class KinematicLoss(nn.Module):
     """
-    Loss for eta, phi (cos/sin) and log pT.
+    Loss for the five-output model [delta_eta, delta_phi, delta_log_pt, z0_norm, charge_logit].
 
-    The model outputs four values:
-
-        [normalized_eta, phi_cos, phi_sin, normalized_log_pt]
-
-    - eta:    ordinary MSE in normalized space
-    - phi:    the target phi is denormalized to radians, mapped to (cos, sin)
-              on the unit circle, and the model's (phi_cos, phi_sin) are pulled
-              toward it.  ((cos-c)^2 + (sin-s)^2 = 2(1 - cosΔ).)
-    - log_pt: ordinary MSE in normalized space.  The residual in un-normalized
-              ln(pT) is reported as pt_rel_rmse, i.e. ~ sigma(pT)/pT.
+    - eta, log pT: Huber (delta 0.1, 0.2) on the residual from the shower anchor
+      (eta_centroid, log_sum_et), in physical units.
+    - phi: Huber (delta 0.05 rad) on the wrapped residual from phi_centroid.
+    - z0: Huber (delta 1.0) on the z-scored target; direct regression.
+    - The four regression losses use learned homoscedastic weights:
+      sum_t exp(-2 log_sigma_t) * L_t + log_sigma_t.
+    - charge: BCE on charge_logit (1 = positron), added outside the learned
+      weighting with a fixed weight.
     """
 
     def __init__(
@@ -284,8 +282,9 @@ def main():
         "batch_size": 96,
         # Env-driven epochs. Supervised AttnPool reference (attnpool-200ep,
         # 770ba8a): N_EPOCHS=200 -> 236,400 steps on 113,427 train electrons
-        # after the |eta| <= 3 cut. Truth-free step-matched run
-        # (attnpool-unsup-324ep): N_EPOCHS=324 -> 260,820 steps on 77,196.
+        # after the |eta| <= 3 cut. Truth-free run (attnpool-unsup-324ep):
+        # N_EPOCHS=324 -> 260,820 steps on 77,196, 10.3 percent more than the
+        # supervised run (324 was computed from a pre-cut training count).
         "n_epochs": int(os.environ.get("N_EPOCHS", "200")),
         "min_epochs": int(os.environ.get("N_EPOCHS", "200")),
         "learning_rate": 3e-4,
@@ -420,6 +419,8 @@ def main():
         best_val_pt_rel_rmse = float("inf")
 
         best_state = None
+        best_loss_state = None
+        best_epoch = None
         epochs_no_improve = 0
 
         for epoch in range(1, cfg["n_epochs"] + 1):
@@ -498,6 +499,7 @@ def main():
                 best_val_loss = selection_score
                 best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
                 best_loss_state = {k: v.detach().cpu().clone() for k, v in loss_fn.state_dict().items()}
+                best_epoch = epoch
                 epochs_no_improve = 0
                 Path("checkpoints").mkdir(exist_ok=True)
                 _tmp = Path("checkpoints/ruche_eta_phi_pt_z0_charge.pt.tmp")
@@ -576,12 +578,13 @@ def main():
         torch.save(
             {
                 "model_state_dict": model.state_dict(),
+                "loss_state_dict": loss_fn.state_dict(),
                 "config": dict(cfg),
                 "target_cols": ["truth_eta", "truth_phi", "truth_log_pt", "truth_z0"],
                 "best_val_loss": best_val_loss,
+                "best_epoch": best_epoch,
                 "best_val_phi_loss": best_val_phi_loss,
                 "best_val_pt_rel_rmse": best_val_pt_rel_rmse,
-                "loss_state_dict": loss_fn.state_dict(),
             },
             checkpoint_path,
         )

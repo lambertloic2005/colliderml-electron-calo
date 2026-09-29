@@ -3,17 +3,17 @@ Test / evaluate the eta + phi + pT + z0 + charge model.
 
 Model output layout (output_dim = 5):
 
-    [eta, phi, log_pt, z0, charge_logit]
+    [delta_eta, delta_phi, delta_log_pt, z0_norm, charge_logit]
 
-Decoding:
-    eta    -> denormalize with target_stats
-    phi    -> denormalize (single signed head; radians)
-    pT     -> exp(denormalize(log_pt))           (GeV)
-    z0     -> denormalize with target_stats      (mm)
-    charge -> sigmoid(charge_logit) > 0.5 => positron
+Decoding (anchors recomputed from the cells by the dataset):
+    eta    -> eta_centroid + delta_eta
+    phi    -> wrap(phi_centroid + delta_phi)     (single signed correction, rad)
+    pT     -> exp(log_sum_et + delta_log_pt)     (GeV)
+    z0     -> z0_mean + z0_norm * z0_std         (mm; anchor is an input only)
+    charge -> charge_logit > 0 => positron
 
-Resolutions are 3-sigma-truncated Gaussian fits; pT is reported as a
-fractional resolution (pred - true)/true.
+Resolutions are iterative 3-sigma-truncated RMS values (see resolution.py);
+pT is reported as a fractional resolution (pred - true)/true.
 
 Environment variables:
     CHECKPOINT, STATS_PATH, OUTPUT_DIR              -- required
@@ -496,7 +496,7 @@ def main():
             ),
         })
     print("\nz0 resolution by |eta| region:")
-    for lo, hi_e, label in [(0.0, 1.2, "barrel"), (1.2, 2.5, "endcap"), (2.5, 99, "fwd")]:
+    for lo, hi_e, label in [(0.0, 1.5, "barrel"), (1.5, 3.0, "endcap"), (3.0, 99, "fwd")]:
         m = (np.abs(true_eta) >= lo) & (np.abs(true_eta) < hi_e)
         if m.any():
             print(f"  |eta| [{lo},{hi_e}) {label:7s}: n={int(m.sum()):5d}  "

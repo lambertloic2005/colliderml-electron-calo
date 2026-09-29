@@ -7,10 +7,11 @@ Workflow per parameter:
     fit.mu             -> bias
     fit.tail_fraction  -> mis-reconstruction rate (non-Gaussian outliers)
 
-The 3-sigma-truncated mean/std IS the maximum-likelihood Gaussian fit on the
-core, so it matches a ROOT / curve_fit Gaussian over the same truncated range
-while avoiding binning bias. Report sigma as the resolution and the tail
-fraction separately, the way the thesis does ("outliers remain small").
+This is an iterative 3-sigma-clipped mean and RMS, not a Gaussian fit. It does
+not correct for the truncation: for a pure Gaussian it returns ~0.985 sigma
+(1.5 percent low) and flags ~0.3 percent of events as tail. The estimator is the
+same for every run here, so comparisons between runs are unaffected; quote it as
+a 3-sigma-truncated (core) RMS, not a fitted Gaussian width.
 
 For phi (or any angle) the residual MUST be wrapped first: a single prediction
 that lands across the +/-pi seam otherwise contributes ~2*pi and wrecks both the

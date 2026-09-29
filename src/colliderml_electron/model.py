@@ -203,6 +203,8 @@ class ConvCaloRegressor(ConcatCaloRegressor):
         high_level_dim: int = 7,
         conv_dim: int = 128,
         kernel_size: int = 5,
+        per_region_proj: bool = False,
+        region_eta_boundary: float = 1.5,
     ):
         # Build embed + encoder via the parent, then throw away its concat head.
         super().__init__(
@@ -214,6 +216,8 @@ class ConvCaloRegressor(ConcatCaloRegressor):
             dropout=dropout,
             output_dim=output_dim,
             high_level_dim=high_level_dim,
+            per_region_proj=per_region_proj,
+            region_eta_boundary=region_eta_boundary,
         )
 
         pad = kernel_size // 2  # 'same' length
