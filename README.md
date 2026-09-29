@@ -225,6 +225,19 @@ Charge is kept outside the learned weighting with a fixed weight of 1.0. In the
 Jun23 runs the charge head did not train under the learned weighting and did
 train with the fixed weight; the mechanism was not isolated.
 
+## Checkpoint selection
+
+The saved checkpoint is not the last epoch. After each epoch the training script
+computes selection_score = val loss_total - 2.0 * (val charge_acc - 0.5) and
+keeps the weights, and the log_sigma from the same epoch, with the lowest score.
+val loss_total includes the learned log_sigma terms, so it is not a pure
+prediction-error measure. The value stored as best_val_loss in the checkpoint
+and the W&B summary is this selection score, not the validation loss;
+best_val_phi_loss and best_val_pt_rel_rmse are minima over all epochs, not
+values at the selected epoch. Patience early stopping only activates after
+min_epochs, which is set equal to N_EPOCHS, so every current run trains for the
+full N_EPOCHS.
+
 ## Evaluation quantities
 
 - `eta_residual   = pred_eta - true_eta`
