@@ -305,11 +305,16 @@ python scripts/check_dims.py --high-level-dim 41 --output-dim 5
 git log --oneline -1
 ```
 
-Train (region, seed and epoch count are environment-driven; regions are
-`full`, `barrel`, `endcap`; `N_EPOCHS=200` is the supervised reference, 324 the
-truth-free step-matched run). Locally the script reads
-`data/electrons/electrons.parquet`; the Lyon sbatch symlinks the staged parquet
-to that name.
+Train (region, seed and epoch count are environment-driven). REGION sets a
+training cut on truth |eta|: full is |eta| <= 3, barrel is |eta| <= 1.7, endcap
+is 1.3 <= |eta| <= 3. These overlap in 1.3-1.7 and are not the evaluation
+regions: the per-region metrics split at |eta| = 1.5. The test script applies the
+checkpoint's training cut unless MAX_ABS_ETA_EVAL / MIN_ABS_ETA_EVAL override it,
+so a REGION=barrel checkpoint is scored on |eta| <= 1.7 by default. N_EPOCHS=200
+is the supervised reference; 324 is the truth-free run (meant to match optimizer
+steps, it received 10.3 percent more; see docs/unsup_clustering_summary.md).
+Locally the script reads data/electrons/electrons.parquet; the Lyon sbatch
+symlinks the staged parquet to that name.
 
 ```bash
 env N_EPOCHS=200 REGION=full SEED=0 python scripts/train_eta_phi_pt_z0_charge.py
