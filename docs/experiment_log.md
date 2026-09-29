@@ -36,8 +36,9 @@
 - pointing-upgrade (Jul 08) -- feature stability: variance floors, cluster-
   feature clipping, min-epochs floor. ADOPTED (code); the Jul08 runs from this
   branch failed on charge and are kept as negatives.
-- Jun23 ConstChargeWeight -- fixed manual charge weight after homoscedastic
-  weighting collapsed the BCE gradient. ADOPTED (charge uses a manual weight).
+- Jun23 ConstChargeWeight (0f60273) -- charge BCE moved out of the homoscedastic
+  weighting onto a fixed weight of 1.0 after the head failed to train as a fifth
+  learned-weight task (mechanism not isolated). ADOPTED (charge uses a fixed weight).
 
 ## Architecture and scaling
 
