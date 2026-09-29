@@ -247,7 +247,7 @@ smaller transverse radius, so the charge-dependent azimuthal displacement
 ## Repository layout
 
 ```text
-src/colliderml_electron/   # main package (io, coords, calibration, pipeline,
+slurm/                     # run_train_test_lyon.sbatch (Lyon CC-IN2P3); legacy/ holds Ruche-era scripts
                            #   cluster, dataset, model, encoder, embedding,
                            #   resolution, splits, stats, plots, ...)
 scripts/                   # build / train / test / diagnose / plot scripts
@@ -353,7 +353,8 @@ mismatches:
 env CHECKPOINT=CKPT.pt STATS_PATH=target_stats.json PARQUET=data/electrons/electrons.parquet OUTPUT_DIR=results/myrun python scripts/test_eta_phi_pt_z0_charge.py
 ```
 
-Optional eval cuts: `MIN_PT_EVAL`, `MAX_ABS_ETA_EVAL`, `MIN_ABS_ETA_EVAL`. Default parquet path is not the same path as in the command.
+Optional eval cuts: `MIN_PT_EVAL`, `MAX_ABS_ETA_EVAL`, `MIN_ABS_ETA_EVAL`. PARQUET defaults to data/electrons/eta_phi_pt_z0_charge/zee_pu200_z0_charge.parquet,
+which is not the training path, so set it explicitly as above.
 
 Evaluation writes expected-vs-predicted scatter plots, per-target residual and
 Gaussian-resolution fits, a phi-residual plot split by truth charge, charge ROC
