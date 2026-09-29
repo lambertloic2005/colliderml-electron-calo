@@ -246,17 +246,15 @@ smaller transverse radius, so the charge-dependent azimuthal displacement
 
 ## Repository layout
 
-```text
-slurm/                     # run_train_test_lyon.sbatch (Lyon CC-IN2P3); legacy/ holds Ruche-era scripts
+src/colliderml_electron/   # main package (io, coords, calibration, pipeline,
                            #   cluster, dataset, model, encoder, embedding,
                            #   resolution, splits, stats, plots, ...)
 scripts/                   # build / train / test / diagnose / plot scripts
-slurm/                     # SLURM batch scripts (Lyon CC-IN2P3)
+slurm/                     # run_train_test_lyon.sbatch (Lyon CC-IN2P3); legacy/ holds Ruche-era scripts
 results/                   # evaluation plots and metrics per run
 docs/                      # supervised_status.md, experiment_log.md, unsup_clustering_summary.md
 notebooks/                 # exploratory notebooks
 pyproject.toml, uv.lock    # environment (uv, Python 3.10-3.11, torch 2.2.2)
-```
 
 Key source files:
 
