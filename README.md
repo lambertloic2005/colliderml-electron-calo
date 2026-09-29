@@ -346,10 +346,10 @@ scoring a checkpoint through the wrong branch's dataset code causes silent shape
 mismatches:
 
 ```bash
-env CHECKPOINT=CKPT.pt STATS_PATH=target_stats.json OUTPUT_DIR=results/myrun python scripts/test_eta_phi_pt_z0_charge.py
+env CHECKPOINT=CKPT.pt STATS_PATH=target_stats.json PARQUET=data/electrons/electrons.parquet OUTPUT_DIR=results/myrun python scripts/test_eta_phi_pt_z0_charge.py
 ```
 
-Optional eval cuts: `MIN_PT_EVAL`, `MAX_ABS_ETA_EVAL`, `MIN_ABS_ETA_EVAL`.
+Optional eval cuts: `MIN_PT_EVAL`, `MAX_ABS_ETA_EVAL`, `MIN_ABS_ETA_EVAL`. Default parquet path is not the same path as in the command.
 
 Evaluation writes expected-vs-predicted scatter plots, per-target residual and
 Gaussian-resolution fits, a phi-residual plot split by truth charge, charge ROC
