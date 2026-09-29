@@ -9,9 +9,7 @@ pooling), model_dim 128, 3 layers, 4 heads, 41 high-level features, 128 cells
 per electron. eta, phi and log(pT) are predicted as corrections to physics
 anchors. z0 is regressed directly in z-scored units; the pointing-fit anchor is
 an input feature, not a residual base. Charge is a separate BCE logit. The four
-regression losses share a learned homoscedastic weighting; charge sits outside
-it on a fixed weight, because putting the BCE term under the learned weight
-drove its gradient to zero.
+regression losses share a learned homoscedastic weighting; charge (BCE) sits outside it on a fixed weight of 1.0. It was originally a fifth task under the learned weighting; in the Jun23 runs the head did not train there and did train on the fixed weight. The mechanism was not isolated: at equilibrium the learned weight for a BCE term is 1/(2L), about 0.72 at chance, so it is not driven to zero by the formula, and the comparison is one run each with loss-based early stopping (stopping epochs not recorded).
 
 ## Reference run
 
