@@ -574,6 +574,7 @@ def main():
 
         if best_state is not None:
             model.load_state_dict(best_state)
+            loss_fn.load_state_dict(best_loss_state)   # log_sigma from the SAME epoch as the weights
 
         torch.save(
             {

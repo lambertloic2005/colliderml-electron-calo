@@ -35,6 +35,12 @@ pulled from W&B or regenerated before quoting a headline.
 
 ## What the tracked July runs show
 
+All tracked July runs were trained and tested on the v1 dataset (about 30k
+electrons), not the current v2 table (178,602 electrons). Their test populations
+(2,452 electrons at pT > 10 GeV, |eta| <= 1.7; 4,479 at |eta| <= 3, all pT) are
+therefore not the population behind the AttnPool numbers above, and the two sets
+of values should not be compared directly.
+
 `results/ab/` (Jul 06) and `results/benchmark/` (Jul 17) predate AttnPool
 (added Jul 28). The ab runs were scored with pT > 10 GeV and, from the region
 counts (2149 barrel, 303 endcap), an |eta| <= 1.7 cut, so their endcap is only
@@ -83,13 +89,18 @@ the anchor is noisy, not that the network has saturated.
   Lyon is
   /pbs/home/l/llambert/cc-attn200/runs/lyon_eta_phi_pt_z0_charge_full_seed0_20260730_104715_55426542
   Its full test-set metrics are not in the repo yet; rerun
-  scripts/test_eta_phi_pt_z0_charge.py on it to get them.
+  scripts/test_eta_phi_pt_z0_charge.py on it to get them. When searching W&B for
+  it, note that the champion's config records
+  `architecture: concat_transformer_eta_phi_pt_z0_charge` (a stale label in
+  `770ba8a`); `model_type: attnpool` is the field that identifies it.
 - All paired supervised vs truth-free numbers (here and in
   `unsup_clustering_summary.md`) need recomputing with the fixed matching in
   `compare_regions_bootstrap.py`. Before that, decide whether the headline
   resolutions use all pT or pT >= 10 GeV to match the acceptance population.
-  `compare_preds_bootstrap.py` still uses rounded keys and should not be used
-  with `--cross-dataset` until it gets the same fix.
+   `compare_preds_bootstrap.py` still uses rounded keys and should not be used
+  with `--cross-dataset` until it gets the same fix. The same applies to fig1 of
+  `make_summary_figs.py` (its `match()` also pairs on rounded truth eta, phi and
+  pT), so that figure carries the same roughly 15 percent pairing loss.
 - The 0.0065 seed sd still needs its seed list from W&B. There is no seed
   variance for any of the resolutions.
 - Only the `PER_REGION_PROJ=1` run exists. The flag-off twin (same parquet,

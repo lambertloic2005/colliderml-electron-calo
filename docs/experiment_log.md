@@ -42,7 +42,7 @@
 
 ## Architecture and scaling
 
-- combo-floor (Jul 23) -- combined-target floor experiments. MERGED.
+- combo-floor (Jul 23) -- combined-target floor experiments.
 - scale-v2 / attnpool-v2 (Jul 24) -- attention-pooling aggregation and scaling.
   ADOPTED (AttnPool).
 - batch-step-fix / batch-step-fix-scaled (Jul 27) -- step-count accounting fix;
@@ -56,7 +56,7 @@
 
 ## Analysis and instrumentation
 
-- attnpool-unsup-324ep (Jul 31) -- truth-free run at step-matched 324 epochs,
+- attnpool-unsup-324ep (Jul 31) -- truth-free run at 324 epochs (intended to match optimizer steps; received 10.3 percent more),
   cross-dataset bootstrap, region split, summary figures. ADOPTED; writeup in
   docs/unsup_clustering_summary.md.
 - sigma-instrumentation (Aug 28) -- W&B logging of learned log_sigma, best-epoch

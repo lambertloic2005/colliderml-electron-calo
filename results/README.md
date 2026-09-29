@@ -38,7 +38,7 @@ Barrel, pT > 10 GeV (seed-variation benchmark set):
 - benchmark/pointing_rep2_barrel_pt10 -- AUC 0.688  (charge did not lift off)
   Charge failures kept as documented negatives; cause not verified (see status note).
 
-## z0 / charge development (RETIRED method, kept for provenance)
+## z0 / charge development (June to early July, kept for provenance)
 
 - ruche/Jul08_pointing_upgrade_full, ..._full_2 -- |eta| <= 3, no pT cut; charge
   failed to lift off (AUC 0.52, 0.62). Anchor-only z0 RMSE is 1500-1870 mm on

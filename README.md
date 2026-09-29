@@ -140,7 +140,7 @@ Note: the `AttnPoolCaloRegressor.__init__` defaults (`model_dim = 256`,
 dict in `scripts/train_eta_phi_pt_z0_charge.py` overrides them to 128 / 3 / 4.
 A larger model (256 / 6 / 8) trained for the same number of optimizer steps lost
 charge performance, with phi core resolution degrading from about 0.007 to
-0.023 rad. The working interpretation is that the larger model needs more steps
+0.023 rad (values come from W&B and the run ID was not recorded). The working interpretation is that the larger model needs more steps
 before the charge head lifts off; this has not been tested with a longer run.
 
 ## Model output
@@ -335,8 +335,25 @@ env N_EPOCHS=200 REGION=full SEED=0 python scripts/train_eta_phi_pt_z0_charge.py
 On the Lyon CC-IN2P3 cluster (H100, SLURM):
 
 ```bash
-N_EPOCHS=200 REGION=full SEED=0 sbatch slurm/run_train_test_lyon.sbatch
+DATA_DIR=/pbs/throng/ijclab/lambert/data/ N_EPOCHS=200 REGION=full SEED=0 sbatch slurm/run_train_test_lyon.sbatch
 ```
+
+The sbatch stages its inputs and environment from these variables (all
+optional; `--export=ALL` passes them through):
+
+- `DATA_DIR` -- directory holding `zee_pu200_z0_charge.parquet` and
+  `target_stats.json`. Default `$HOME/data`.
+- `SOURCE_Z0_CHARGE_FILE`, `SOURCE_STATS_FILE` -- full paths to the parquet and
+  stats file, overriding the `DATA_DIR` defaults (use these to train on a
+  differently named table).
+- `CONDA_ENV` -- path prefix (not a name) of the conda environment to activate.
+  Default `$HOME/envs/colliderml`. The Lyon job uses this conda environment,
+  not the uv environment from Setup; it must contain the same pinned packages.
+- `RUN_TAG`, `RUNS_ROOT` -- optional run-name tag and output root (default
+  `$PROJECT_DIR/runs`).
+
+The job writes `provenance.txt` (source paths, md5 of parquet and stats, git
+commit and dirty state) into the run directory.
 
 The per-region input-projection ablation is gated by an environment flag and is
 backward-compatible with existing checkpoints:
