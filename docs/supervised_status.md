@@ -13,25 +13,55 @@ regression losses share a learned homoscedastic weighting; charge (BCE) sits out
 
 ## Reference run
 
-The test_metrics.json files tracked in results/ are from earlier, pre-AttnPool
-July runs; the AttnPool reference below has no tracked metrics file.
-
 Supervised AttnPool reference: branch `attnpool-200ep`, commit `770ba8a`, Lyon
-job 55426542, 200 epochs, batch 96, 236,400 optimizer steps. On the paired
-population of `unsup_clustering_summary.md` (electrons reconstructed by both
-pipelines):
+job 55426542, run directory
+/pbs/home/l/llambert/cc-attn200/runs/lyon_eta_phi_pt_z0_charge_full_seed0_20260730_104715_55426542
+W&B (run offline, synced afterwards): training a7sjsrl7, evaluation i6mf98h5.
+The on-disk test_metrics.json is the authoritative copy and is tracked as
+results/attnpool_200ep_full/test_metrics.json. The run predates provenance.txt,
+so the parquet md5 is not recorded. Checked instead: the test script md5
+matches 770ba8a; the checkpoint config is attnpool 128/3/4, high_level_dim 41,
+batch 96, seed 0; the acceptance cuts read train 124,957 -> 113,427, val
+26,813 -> 24,184, test 26,832 -> 24,196.
 
-- barrel, n = 10,825: charge AUC 0.955, phi sigma 0.0056 rad, eta sigma 0.019,
-  pT sigma 3.0 percent, z0 sigma 34.8 mm
-- endcap, n = 3,139: charge AUC 0.882, phi sigma 0.0093 rad, eta sigma 0.017,
-  pT sigma 2.9 percent, z0 sigma 55.0 mm (beamspot prior about 57 mm)
+The run trained for 200 epochs (236,400 optimizer steps), but the saved
+checkpoint is from epoch 49 (about 57,900 steps), the epoch with the lowest
+selection score (see README, Checkpoint selection). The runner-up, epoch 38,
+scores 0.015 worse, far above log rounding. After epoch 49 train loss keeps
+falling and val loss rises. Of the per-task val quantities, the phi loss worsens
+by about 10 percent and the ln pT RMSE by about 7 percent by epoch 191, eta is
+flat, and val charge accuracy stays near 0.81. Most of the rise in val
+loss_total comes from the learned sigmas tracking the falling train loss, not
+from val degradation. Every number below is from the epoch-49 weights.
 
-These are Gaussian-core sigmas on a selected population, not full-test-set
-RMSEs. That population is also incomplete: the matching dropped about 15
-percent of genuine pairs, more in the endcap (see the caveats in
-`unsup_clustering_summary.md`), so these values need to be recomputed before
-they are quoted. Full-population numbers for this checkpoint still need to be
-pulled from W&B or regenerated before quoting a headline.
+Test split, |eta| <= 3, truth pT >= 10 GeV (n = 21,607, the same population as
+the acceptance denominator in unsup_clustering_summary.md). Resolutions are
+3-sigma-truncated core RMS, tail fraction in brackets.
+
+- barrel, n = 11,799: charge AUC 0.956 (acc 0.886), phi sigma 0.0054 rad
+  (11.0%), eta sigma 0.019 (0.7%), pT sigma 2.9% (2.4%), z0 RMSE 37.0 mm
+  against a 54.9 mm prior
+- endcap, n = 9,808: charge AUC 0.835 (acc 0.740), phi sigma 0.0072 rad
+  (5.7%), eta sigma 0.016 (0.4%), pT sigma 2.7% (6.5%), z0 RMSE 55.4 mm
+  against a 55.7 mm prior
+
+All pT (n = 24,196): barrel AUC 0.951, phi 0.0058 rad (15.5%), eta 0.020
+(2.9%), pT 3.1% (6.9%), z0 RMSE 39.2 mm (prior 55.2); endcap AUC 0.832, phi
+0.0077 rad (11.4%), eta 0.017 (2.3%), pT 2.8% (10.9%), z0 RMSE 58.2 mm (prior
+58.5). The all-pT RMSEs (phi 0.20 rad, relative pT 52%) are dominated by
+electrons below 5 GeV, 6 percent of the sample, and should not be quoted.
+
+The phi tail is mostly the charge failure mode. In the barrel at pT >= 10 GeV,
+wrong-charge electrons are 11.4 percent of the sample but 71 percent of the phi
+tail, and their residual carries the sign of the uncorrected bend (mean
+q * residual -0.025 rad, against -0.002 rad for correct calls). For correctly
+charged barrel electrons phi sigma is 0.0045 rad. The endcap shows the same
+pattern (74 percent of the tail, 26 percent of the sample).
+
+pT-cut numbers come from preds.npz via scripts/metrics_from_preds.py, which
+reproduces test_metrics.json exactly with no pT cut. One seed; no seed
+variance exists for the resolutions. This is the v2 test population; the July
+numbers below are on v1, so the two are not a paired comparison.
 
 ## What the tracked July runs show
 
