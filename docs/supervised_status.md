@@ -134,7 +134,9 @@ the anchor is noisy, not that the network has saturated.
 - Only the `PER_REGION_PROJ=1` run exists. The flag-off twin (same parquet,
   seed and N_EPOCHS) was never run, so there is no result for this yet.
 - The about 90,000 steps to charge lift-off comes from earlier configurations.
-  AttnPool lifted off earlier and its step count at lift-off was not measured.
+  For the AttnPool champion, val charge accuracy was 0.49 at epoch 1 and 0.788
+  at epoch 11 (13,002 steps), so lift-off happened within the first 11 epochs;
+  the exact epoch was not extracted.
 - Supervised electron loss is traced in code: build_electron_row drops an
   electron only when its descendant family has zero truth-linked cells (the DBSCAN
   clean falls back to keeping all cells and cannot empty it); duplicates on
