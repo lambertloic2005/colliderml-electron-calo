@@ -58,8 +58,9 @@
 
 ## Analysis and instrumentation
 
-- attnpool-unsup-324ep (Jul 31) -- truth-free run at 324 epochs (intended to match optimizer steps; received 10.3 percent more),
-  cross-dataset bootstrap, region split, summary figures. ADOPTED; writeup in
+- attnpool-unsup-324ep (Jul 31) -- truth-free run at 324 epochs (budget intended
+  to match optimizer steps, received 10.3 percent more; checkpoint selected at
+  epoch 26), cross-dataset bootstrap, region split, summary figures. ADOPTED; writeup in
   docs/unsup_clustering_summary.md.
 - sigma-instrumentation (Aug 28) -- W&B logging of learned log_sigma, best-epoch
   loss_state_dict in checkpoints, uncertainty-vs-resolution check. ADOPTED,
