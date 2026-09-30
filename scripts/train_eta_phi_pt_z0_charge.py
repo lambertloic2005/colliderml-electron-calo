@@ -285,6 +285,8 @@ def main():
         # after the |eta| <= 3 cut. Truth-free run (attnpool-unsup-324ep):
         # N_EPOCHS=324 -> 260,820 steps on 77,196, 10.3 percent more than the
         # supervised run (324 was computed from a pre-cut training count).
+        # These are budgets: the saved checkpoints came from epoch 49
+        # (supervised) and epoch 26 (truth-free); see docs/supervised_status.md.
         "n_epochs": int(os.environ.get("N_EPOCHS", "200")),
         "min_epochs": int(os.environ.get("N_EPOCHS", "200")),
         "learning_rate": 3e-4,
