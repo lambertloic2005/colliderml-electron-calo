@@ -148,9 +148,11 @@ pT is the dominant loss everywhere and eta the most robust.
 ## Working point scan
 
 500 events, shards 0-4, truth pT >= 10 GeV. `sigLog` is the half 16-84 interval
-of log(E_cluster / E_truth), which is the irreducible noise the clustering
-injects into the pT anchor. Counts are matched electrons; the truth denominator
-is fixed across thresholds, so counts are a relative efficiency.
+of log(E_cluster / E_truth): the spread of the raw cluster energy used as the pT
+anchor, before any network correction. It is not an irreducible floor. The
+trained truth-free model reaches a 6.2 percent barrel pT core resolution against
+a sigLog of 0.17 at the 0.10 working point (different populations: this scan is
+pT >= 10 GeV, the resolutions have no pT floor). Counts are matched electrons; the truth denominator is fixed across thresholds, so counts are a relative efficiency.
 
 | threshold | barrel n | barrel sigLog | endcap n | endcap sigLog |
 |---|---|---|---|---|
