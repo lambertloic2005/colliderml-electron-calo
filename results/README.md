@@ -10,11 +10,12 @@ git show 16030c0^:results/benchmark/baseline_barrel_pt10/preds.npz > preds.npz
 Labels: CURRENT (AttnPool-era current method), RETIRED (superseded method),
 REFERENCE (diagnostic/baseline kept for comparison).
 
-Note on the champion: none of the run directories below is an AttnPool run.
-The supervised AttnPool reference (attnpool-200ep, 770ba8a, Lyon job 55426542)
-has no tracked test_metrics.json; its paired numbers are in
-docs/unsup_clustering_summary.md and summarized in docs/supervised_status.md.
-They need to be recomputed; see the caveats in docs/unsup_clustering_summary.md.
+Note on the champion: the supervised AttnPool reference (attnpool-200ep,
+770ba8a, Lyon job 55426542, checkpoint from epoch 49 of 200) is
+attnpool_200ep_full/, scored on the full v2 test split (|eta| <= 3, all pT).
+pT-cut numbers and the phi-tail analysis are in docs/supervised_status.md. No
+other run directory below is an AttnPool run, and all of them predate the v2
+dataset.
 
 ## Tracked July runs (pre-AttnPool, full target set)
 
