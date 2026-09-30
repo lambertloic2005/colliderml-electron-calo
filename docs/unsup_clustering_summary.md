@@ -72,13 +72,16 @@ Supervised: 200 epochs, 113,427 training electrons after the |eta| <= 3 cut,
 236,400 steps. Truth-free: 324 epochs, 77,196 electrons, 260,820 steps.
 
 Correction to note: the 324-epoch figure was chosen against an assumed
-supervised training size of 124,906, which was the pre-cut count. Against the
-correct post-cut count the truth-free run received 10.3 percent *more* optimizer
-steps than the supervised one, not an equal number. The bias therefore favours
-the truth-free model, so the degradation reported below is if anything
-conservative. The run also converged: validation loss, phi RMSE, pT resolution
-and charge accuracy are flat to four decimal places over the final twenty
-epochs, so the extra budget had no effect either way.
+supervised training size of 124,906. The supervised run's log shows 124,957
+before the |eta| <= 3 cut and 113,427 after, so the truth-free budget was 10.3
+percent more optimizer steps. Budgets do not decide what was compared, though:
+each run saved the epoch with the best validation selection score, epoch 49 of
+200 for the supervised run (about 57,900 steps) and epoch 26 of 324 for the
+truth-free run (about 20,900 steps). The supervised run overfits after its
+selected epoch; the truth-free val trend after epoch 26 has not been checked.
+The comparison below is therefore between each pipeline's validation-selected
+checkpoint, not a step-matched pair, and the earlier statement that the step
+difference favoured the truth-free model does not hold.
 
 Training-set composition confirms the barrel comparison is not confounded by
 data volume: 61,823 supervised barrel electrons against 58,752 truth-free, or
