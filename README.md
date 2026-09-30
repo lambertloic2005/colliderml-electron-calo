@@ -337,8 +337,9 @@ is 1.3 <= |eta| <= 3. These overlap in 1.3-1.7 and are not the evaluation
 regions: the per-region metrics split at |eta| = 1.5. The test script applies the
 checkpoint's training cut unless MAX_ABS_ETA_EVAL / MIN_ABS_ETA_EVAL override it,
 so a REGION=barrel checkpoint is scored on |eta| <= 1.7 by default. N_EPOCHS=200
-is the supervised reference; 324 is the truth-free run (meant to match optimizer
-steps, it received 10.3 percent more; see docs/unsup_clustering_summary.md).
+is the supervised reference and 324 the truth-free run. These were chosen to
+roughly match optimizer-step budgets, but the saved checkpoints come from epochs
+49 and 26 (see Checkpoint selection and docs/unsup_clustering_summary.md).
 Locally the script reads data/electrons/electrons.parquet; the Lyon sbatch
 symlinks the staged parquet to that name.
 
