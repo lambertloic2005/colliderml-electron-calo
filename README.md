@@ -58,10 +58,11 @@ Large data and checkpoint files are not tracked in git (see `.gitignore`). The
 parquet tables live outside the repository on the compute hosts.
 
 Two dataset generations exist. v1 (about 30k electrons, used until mid-July
-2026) is behind every tracked test_metrics.json in results/. v2 (178,602
-electrons, 96,553 events, shards 0-999) is current; harmonize_splits.py keeps
-every v1 event in its v1 split. Tracked July numbers and AttnPool numbers are
-therefore not on the same test population.
+2026) is behind the tracked July test_metrics.json files in results/. v2
+(178,602 electrons, 96,553 events, shards 0-999) is current and is behind
+results/attnpool_200ep_full/; harmonize_splits.py keeps every v1 event in its
+v1 split. Tracked July numbers and AttnPool numbers are therefore not on the
+same test population.
 
 ## Model inputs
 
