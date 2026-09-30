@@ -115,14 +115,12 @@ the anchor is noisy, not that the network has saturated.
 
 ## Open items
 
-- The champion run directory (`attnpool-200ep`, `770ba8a`, job 55426542) on
-  Lyon is
-  /pbs/home/l/llambert/cc-attn200/runs/lyon_eta_phi_pt_z0_charge_full_seed0_20260730_104715_55426542
-  Its full test-set metrics are not in the repo yet; rerun
-  scripts/test_eta_phi_pt_z0_charge.py on it to get them. When searching W&B for
-  it, note that the champion's config records
-  `architecture: concat_transformer_eta_phi_pt_z0_charge` (a stale label in
-  `770ba8a`); `model_type: attnpool` is the field that identifies it.
+- The champion read train/val counts of 124,957 / 26,813; the table in
+  unsup_clustering_summary.md says 124,921 / 26,849, and 124,906 is quoted
+  there as the pre-cut train count. Totals and the test count agree. Find the
+  parquet the job staged and check its md5 and split counts.
+- Checkpoint selection on loss_total mostly tracks the train/val gap through
+  the learned sigmas. A selection on fixed-weight val metrics would be cleaner.
 - All paired supervised vs truth-free numbers (here and in
   `unsup_clustering_summary.md`) need recomputing with the fixed matching in
   `compare_regions_bootstrap.py`. Before that, decide whether the headline
