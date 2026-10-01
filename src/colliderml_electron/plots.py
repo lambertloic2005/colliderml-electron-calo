@@ -43,7 +43,7 @@ def detector_geometry(
                    label=f"detector={code} (n={mask.sum()})")
     ax.set_xlabel("z [mm]")
     ax.set_ylabel(r"r = $\sqrt{x^2+y^2}$ [mm]")
-    ax.set_title(f"Calo cell geometry — {n_events} events "
+    ax.set_title(f"Calo cell geometry -- {n_events} events "
                  f"(<= {max_cells_per_event} cells/event subsampled)")
     ax.legend(markerscale=12, fontsize=9, loc="upper right", framealpha=0.9)
     ax.grid(True, alpha=0.2)
@@ -76,7 +76,7 @@ def cell_energy_spectrum(
     ax.set_xlabel(r"$\log_{10}$(cell energy)  [uncalibrated]")
     ax.set_ylabel("cells")
     ax.set_yscale("log")
-    ax.set_title(f"Cell-energy spectrum — {n_events} events, {len(e):,} cells")
+    ax.set_title(f"Cell-energy spectrum -- {n_events} events, {len(e):,} cells")
 
     pct = np.percentile(log_e, [1, 50, 99])
     ymax = ax.get_ylim()[1]
@@ -117,7 +117,7 @@ def cells_per_electron(
               edgecolor="white", linewidth=0.3)
     ax_h.set_xlabel("cells per electron")
     ax_h.set_ylabel("electrons")
-    ax_h.set_title(f"Cells per prompt electron — {len(n_cells)} electrons")
+    ax_h.set_title(f"Cells per prompt electron -- {len(n_cells)} electrons")
     ax_h.grid(True, alpha=0.2)
 
     ax_s.scatter(energies, n_cells, alpha=0.6, s=20, color="seagreen")
@@ -299,7 +299,7 @@ def shower_3d(
         cleaning_text = "original"
 
     ax.set_title(
-        f"Electron shower — pid={electron_pid}, "
+        f"Electron shower -- pid={electron_pid}, "
         f"E={E:.1f} GeV, {n_after} cells "
         f"({shower_type}, {cleaning_text})"
     )
@@ -363,7 +363,7 @@ def shower_eta_phi_lego(
     ax.axvline(0, color="white", linestyle="--", linewidth=0.5, alpha=0.6)
     ax.set_xlabel(r"$\Delta\eta$")
     ax.set_ylabel(r"$\Delta\varphi$")
-    ax.set_title(f"η–φ lego — pid={electron_pid}, E={E:.1f} GeV, "
+    ax.set_title(f"η–φ lego -- pid={electron_pid}, E={E:.1f} GeV, "
                  r"$\eta_0$=" + f"{float(eta_e):.2f}, n_cells={len(cells['x'])}")
     fig.tight_layout()
     return fig
@@ -426,7 +426,7 @@ def shower_longitudinal_profile(
         bottoms = bottoms + h
 
     ax_h.set_ylabel("calibrated energy per bin [GeV]")
-    ax_h.set_title(f"Longitudinal shower profile — pid={electron_pid}, "
+    ax_h.set_title(f"Longitudinal shower profile -- pid={electron_pid}, "
                    f"E={E:.1f} GeV, Σ deposited = {e_cal.sum():.1f} GeV")
     ax_h.legend(loc="upper right", fontsize=9)
     ax_h.grid(True, alpha=0.2)

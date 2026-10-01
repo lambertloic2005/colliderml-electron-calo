@@ -55,7 +55,7 @@ def main():
     first = next(iter(loader))
     print(f"target shape : {tuple(first['target'].shape)}")
     print(f"first row    : {[round(v, 4) for v in first['target'][0].tolist()]}")
-    print(f"using eta_idx={args.eta_idx}, phi_idx={args.phi_idx} — confirm these are right\n")
+    print(f"using eta_idx={args.eta_idx}, phi_idx={args.phi_idx} -- confirm these are right\n")
 
     # --- short training loop ---
     model.train()

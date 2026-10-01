@@ -24,7 +24,7 @@ for c in TARGET_COLS:
     print(f"{c:14s} present={c in stats}  std_ok={ok}  "
           f"mean={stats.get(c,{}).get('mean')}  std={stats.get(c,{}).get('std')}")
 
-# 4) stats were computed on TRAIN ONLY — re-derive and compare
+# 4) stats were computed on TRAIN ONLY -- re-derive and compare
 tr = df.filter(pl.col("split") == "train")
 print("recomputed train mean/std for log_pt:",
       round(tr["truth_log_pt"].mean(), 6), round(tr["truth_log_pt"].std(), 6))

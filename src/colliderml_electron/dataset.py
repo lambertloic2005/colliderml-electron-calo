@@ -269,7 +269,7 @@ def collate_pad(batch: list[dict]) -> dict:
     Returns:
       x_sampled:    (B, L_max, 3)
       x_high_level: (B, L_max, H)
-      mask:         (B, L_max)  — True = padding, False = real cell
+      mask:         (B, L_max)  -- True = padding, False = real cell
       target:       (B, n_targets)
     """
     B = len(batch)

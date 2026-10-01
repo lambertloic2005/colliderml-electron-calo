@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-sync_calo_hits.py — download ColliderML calo_hits Parquet shards, skipping any
+sync_calo_hits.py -- download ColliderML calo_hits Parquet shards, skipping any
 already present locally.
 
 ColliderML Release 1 is hosted on the Hugging Face Hub. hf_hub_download already

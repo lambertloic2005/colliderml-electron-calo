@@ -103,7 +103,7 @@ def main():
           f"{logs['z0_rmse_mm'].item():.1f} mm "
           f"(should be ~z0_std scale, i.e. mm not ~1)")
 
-    print("\nALL CHECKS PASSED — the loss wiring is correct.")
+    print("\nALL CHECKS PASSED -- the loss wiring is correct.")
     print("Next: retrain, then point the test checkpoint_path at the new .pt file.")
 
 

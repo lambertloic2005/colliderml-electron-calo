@@ -1,5 +1,5 @@
 """
-Analytic time-of-flight (ToF) ceiling for z0 — no model involved.
+Analytic time-of-flight (ToF) ceiling for z0 -- no model involved.
 
 For each electron, the cells satisfy  t_i ~= t0 + d_i / c , where
 d_i = sqrt(r_i^2 + (z_i - z_v)^2) is the path from the production vertex

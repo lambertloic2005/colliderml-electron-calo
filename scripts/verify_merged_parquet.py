@@ -83,16 +83,16 @@ failures = []
 
 
 def ok(msg):
-    print(f"✅ {msg}")
+    print(f"[OK] {msg}")
 
 
 def warn(msg):
-    print(f"⚠️  {msg}")
+    print(f"[WARN] {msg}")
 
 
 def fail(msg):
     failures.append(msg)
-    print(f"❌ {msg}")
+    print(f"[FAIL] {msg}")
 
 
 def row_count(path):

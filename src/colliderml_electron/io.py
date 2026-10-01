@@ -145,7 +145,7 @@ def cells_for_electron(calo_row: dict, electron_pid: int) -> dict[str, np.ndarra
 def cells_for_electron_full(
     particles_row: dict, calo_row: dict, electron_pid: int
 ) -> dict[str, np.ndarray]:
-    """Electron + all descendants via parent_id — the full EM shower."""
+    """Electron + all descendants via parent_id -- the full EM shower."""
     family = descendant_pids(particles_row, electron_pid)
     return cells_for_particle_set(calo_row, family)
 

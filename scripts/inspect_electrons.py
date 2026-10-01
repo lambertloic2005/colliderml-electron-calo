@@ -10,7 +10,7 @@ def sanity_check(parquet_path: str) -> None:
     n = df.height
     print(f"Total electrons:         {n}")
     if n == 0:
-        print("EMPTY FILE — every electron was skipped. Pipeline broken.")
+        print("EMPTY FILE -- every electron was skipped. Pipeline broken.")
         return
 
     # --- Event-level ---
@@ -25,7 +25,7 @@ def sanity_check(parquet_path: str) -> None:
         print(f"  {col:14s} min={a.min():+9.3f}  max={a.max():+9.3f}  mean={a.mean():+9.3f}")
     pos = int((df["truth_charge"].to_numpy() == +1).sum())
     neg = int((df["truth_charge"].to_numpy() == -1).sum())
-    print(f"  charge balance:  +1 → {pos},  -1 → {neg}  (expect roughly equal)")
+    print(f"  charge balance:  +1 -> {pos},  -1 -> {neg}  (expect roughly equal)")
 
     # --- Cell counts ---
     n_cells = df["n_cells"].to_numpy()
@@ -38,9 +38,9 @@ def sanity_check(parquet_path: str) -> None:
     all_dR = np.concatenate(df["cell_dR_truth"].to_list())
     print(f"  cell ΔR: min={all_dR.min():.4f}  max={all_dR.max():.4f}")
     if all_dR.max() > 0.1 + 1e-6:
-        print("  WARNING: cells with ΔR > 0.1 leaked through — bug in dR_max_mask")
+        print("  WARNING: cells with ΔR > 0.1 leaked through -- bug in dR_max_mask")
     else:
-        print("  OK: every cell has ΔR ≤ 0.1")
+        print("  OK: every cell has ΔR <= 0.1")
 
     # --- Energy containment (sanity of cell-electron matching + calibration) ---
     print("\n--- Energy containment ---")
@@ -68,7 +68,7 @@ def sanity_check(parquet_path: str) -> None:
     print("\n--- Detector subsystem codes ---")
     codes = np.unique(np.concatenate(df["cell_detector"].to_list()))
     print(f"  codes: {codes.tolist()}")
-    print(f"  → paste this list into DETECTOR_CODES in dataset.py")
+    print(f"  -> paste this list into DETECTOR_CODES in dataset.py")
 
     print("\n=== END REPORT ===\n")
 

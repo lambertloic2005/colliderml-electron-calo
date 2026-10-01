@@ -12,7 +12,7 @@ Two stages you can run together or separately:
 
   download : fetch matching ``particles`` + ``calo_hits`` shard PAIRS into the
              colliderml cache, stopping *before* a hard byte cap (default 500 GB).
-             build_electron_table intersects particles ∩ calo_hits shard indices,
+             build_electron_table intersects particles & calo_hits shard indices,
              so shards are only useful in matching index pairs -- that is what we
              download.
 

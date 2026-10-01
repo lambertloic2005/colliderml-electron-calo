@@ -1,4 +1,4 @@
-"""Dump model predictions and targets for one batch — diagnostic only.
+"""Dump model predictions and targets for one batch -- diagnostic only.
 
 Run from the repo root:
     python scripts/check_predictions.py --parquet path/to/smoke.parquet
